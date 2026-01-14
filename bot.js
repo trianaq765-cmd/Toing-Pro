@@ -25,6 +25,7 @@ const client = new Client({
 const TOKEN = process.env.DISCORD_TOKEN;
 const PROMETHEUS_PATH = process.env.PROMETHEUS_PATH || '/app/prometheus';
 const JNKIE_API_KEY = process.env.JNKIE_API_KEY;
+const JNKIE_SERVICE_ID = process.env.JNKIE_SERVICE_ID; // Default service ID
 
 if (!TOKEN) {
     console.error('TOKEN NOT FOUND');
@@ -42,6 +43,7 @@ const PRESETS = {
 client.on('ready', () => {
     console.log(`Bot ${client.user.tag} online`);
     console.log(`jnkie API: ${JNKIE_API_KEY ? 'Configured' : 'NOT SET'}`);
+    console.log(`Default Service ID: ${JNKIE_SERVICE_ID || 'NOT SET'}`);
 });
 
 client.on('messageCreate', async (message) => {
@@ -59,6 +61,7 @@ client.on('messageCreate', async (message) => {
         else if (cmd.startsWith('!integration')) await handleIntegration(message, args);
         else if (cmd.startsWith('!key')) await handleKey(message, args);
         else if (cmd === '!help') await handleHelp(message);
+        else if (cmd === '!status') await handleStatus(message);
     } catch (err) {
         console.error(err);
     }
@@ -135,9 +138,10 @@ async function handleService(message, args) {
         const result = await jnkieRequest('GET', '/services');
         if (result.success) {
             const services = Array.isArray(result.data) ? result.data : [];
-            const list = services.length > 0 
-                ? services.map((s, i) => `${i+1}. **${s.name}** (\`${s.id}\`)`).join('\n')
-                : 'Tidak ada service';
+            if (services.length === 0) {
+                return message.reply({ embeds: [{ color: 0x3498db, title: '📦 Services', description: 'Tidak ada service. Buat dengan `!service create [name]`' }] });
+            }
+            const list = services.map((s, i) => `${i+1}. **${s.name}**\n   ID: \`${s.id}\`\n   Slug: \`${s.slug || 'N/A'}\``).join('\n\n');
             return message.reply({ embeds: [{ color: 0x3498db, title: '📦 Services', description: list }] });
         }
         return message.reply(`❌ Error: ${result.error}`);
@@ -157,7 +161,14 @@ async function handleService(message, args) {
         });
 
         if (result.success) {
-            return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Service Created', description: `Name: **${name}**` }] });
+            const id = result.data?.id || 'N/A';
+            return message.reply({ 
+                embeds: [{ 
+                    color: 0x2ecc71, 
+                    title: '✅ Service Created', 
+                    description: `Name: **${name}**\nID: \`${id}\`\n\n💡 Set environment variable:\n\`JNKIE_SERVICE_ID=${id}\``
+                }] 
+            });
         }
         return message.reply(`❌ Error: ${result.error}`);
     }
@@ -172,11 +183,14 @@ async function handleService(message, args) {
             return message.reply({ 
                 embeds: [{ 
                     color: 0x3498db, 
-                    title: '📦 Service', 
+                    title: '📦 Service Details', 
                     fields: [
                         { name: 'Name', value: s.name || 'N/A', inline: true },
-                        { name: 'ID', value: s.id || 'N/A', inline: true },
-                        { name: 'Description', value: s.description || 'N/A' }
+                        { name: 'ID', value: `\`${s.id}\`` || 'N/A', inline: true },
+                        { name: 'Slug', value: s.slug || 'N/A', inline: true },
+                        { name: 'Description', value: s.description || 'N/A' },
+                        { name: 'Premium', value: s.is_premium ? 'Yes' : 'No', inline: true },
+                        { name: 'Keyless', value: s.keyless_mode ? 'Yes' : 'No', inline: true }
                     ]
                 }]
             });
@@ -190,7 +204,7 @@ async function handleService(message, args) {
 
         const result = await jnkieRequest('DELETE', `/services/${id}`);
         if (result.success) {
-            return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Deleted' }] });
+            return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Service Deleted' }] });
         }
         return message.reply(`❌ Error: ${result.error}`);
     }
@@ -207,9 +221,10 @@ async function handleProvider(message, args) {
         const result = await jnkieRequest('GET', '/providers');
         if (result.success) {
             const providers = Array.isArray(result.data) ? result.data : [];
-            const list = providers.length > 0 
-                ? providers.map((p, i) => `${i+1}. **${p.name}** (\`${p.id}\`)`).join('\n')
-                : 'Tidak ada provider';
+            if (providers.length === 0) {
+                return message.reply({ embeds: [{ color: 0x9b59b6, title: '🔌 Providers', description: 'Tidak ada provider' }] });
+            }
+            const list = providers.map((p, i) => `${i+1}. **${p.name}**\n   ID: \`${p.id}\``).join('\n\n');
             return message.reply({ embeds: [{ color: 0x9b59b6, title: '🔌 Providers', description: list }] });
         }
         return message.reply(`❌ Error: ${result.error}`);
@@ -221,7 +236,8 @@ async function handleProvider(message, args) {
 
         const result = await jnkieRequest('POST', '/providers', { name: name });
         if (result.success) {
-            return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Provider Created' }] });
+            const id = result.data?.id || 'N/A';
+            return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Provider Created', description: `ID: \`${id}\`` }] });
         }
         return message.reply(`❌ Error: ${result.error}`);
     }
@@ -239,7 +255,7 @@ async function handleProvider(message, args) {
                     title: '🔌 Provider', 
                     fields: [
                         { name: 'Name', value: p.name || 'N/A', inline: true },
-                        { name: 'ID', value: p.id || 'N/A', inline: true }
+                        { name: 'ID', value: `\`${p.id}\`` || 'N/A', inline: true }
                     ]
                 }]
             });
@@ -270,9 +286,10 @@ async function handleIntegration(message, args) {
         const result = await jnkieRequest('GET', '/integrations');
         if (result.success) {
             const items = Array.isArray(result.data) ? result.data : [];
-            const list = items.length > 0 
-                ? items.map((i, idx) => `${idx+1}. **${i.type || i.name}** (\`${i.id}\`)`).join('\n')
-                : 'Tidak ada integration';
+            if (items.length === 0) {
+                return message.reply({ embeds: [{ color: 0xe67e22, title: '🔗 Integrations', description: 'Tidak ada integration' }] });
+            }
+            const list = items.map((i, idx) => `${idx+1}. **${i.type || i.name}**\n   ID: \`${i.id}\``).join('\n\n');
             return message.reply({ embeds: [{ color: 0xe67e22, title: '🔗 Integrations', description: list }] });
         }
         return message.reply(`❌ Error: ${result.error}`);
@@ -294,7 +311,8 @@ async function handleIntegration(message, args) {
 
         const result = await jnkieRequest('POST', '/integrations', { type: type });
         if (result.success) {
-            return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Integration Created' }] });
+            const id = result.data?.id || 'N/A';
+            return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Integration Created', description: `ID: \`${id}\`` }] });
         }
         return message.reply(`❌ Error: ${result.error}`);
     }
@@ -312,7 +330,7 @@ async function handleIntegration(message, args) {
                     title: '🔗 Integration', 
                     fields: [
                         { name: 'Type', value: i.type || 'N/A', inline: true },
-                        { name: 'ID', value: i.id || 'N/A', inline: true }
+                        { name: 'ID', value: `\`${i.id}\`` || 'N/A', inline: true }
                     ]
                 }]
             });
@@ -339,23 +357,77 @@ async function handleKey(message, args) {
 
     const action = args[0]?.toLowerCase();
 
+    // !key list [serviceId]
     if (!action || action === 'list') {
-        const result = await jnkieRequest('GET', '/keys?limit=15');
+        const serviceId = args[1] || JNKIE_SERVICE_ID;
+        
+        if (!serviceId) {
+            return message.reply({
+                embeds: [{
+                    color: 0xe74c3c,
+                    title: '❌ Service ID Required',
+                    description: '**Usage:** `!key list [serviceId]`\n\n**Atau set default:**\nTambah env `JNKIE_SERVICE_ID`\n\n**Lihat services:** `!service list`'
+                }]
+            });
+        }
+
+        const result = await jnkieRequest('GET', `/keys?service_id=${serviceId}&limit=15`);
         if (result.success) {
             const keys = Array.isArray(result.data) ? result.data : [];
-            const list = keys.length > 0 
-                ? keys.map((k, i) => `${i+1}. \`${(k.key || k.id).substring(0, 20)}...\``).join('\n')
-                : 'Tidak ada key';
-            return message.reply({ embeds: [{ color: 0x2ecc71, title: '🔑 Keys', description: list }] });
+            if (keys.length === 0) {
+                return message.reply({ 
+                    embeds: [{ 
+                        color: 0x2ecc71, 
+                        title: '🔑 Keys', 
+                        description: `Service: \`${serviceId}\`\n\nTidak ada key. Buat dengan:\n\`!key create ${serviceId} [duration]\`` 
+                    }] 
+                });
+            }
+            const list = keys.map((k, i) => {
+                const keyStr = k.key || k.id || 'N/A';
+                return `${i+1}. \`${keyStr.substring(0, 25)}...\`\n   Status: ${k.status || 'active'} | Expires: ${k.expires_at || 'N/A'}`;
+            }).join('\n\n');
+            return message.reply({ 
+                embeds: [{ 
+                    color: 0x2ecc71, 
+                    title: '🔑 Keys', 
+                    description: `**Service:** \`${serviceId}\`\n\n${list}`,
+                    footer: { text: `Total: ${keys.length} keys` }
+                }] 
+            });
         }
         return message.reply(`❌ Error: ${result.error}`);
     }
 
+    // !key create [serviceId] [duration] [note]
     if (action === 'create') {
-        const duration = args[1] || '7d';
-        const note = args.slice(2).join(' ') || `By ${message.author.username}`;
+        let serviceId, duration, note;
+        
+        // Check if first arg is serviceId or duration
+        if (args[1] && (args[1].endsWith('d') || args[1].endsWith('h') || args[1].endsWith('m'))) {
+            // !key create 7d note
+            serviceId = JNKIE_SERVICE_ID;
+            duration = args[1];
+            note = args.slice(2).join(' ') || `By ${message.author.username}`;
+        } else {
+            // !key create [serviceId] [duration] [note]
+            serviceId = args[1] || JNKIE_SERVICE_ID;
+            duration = args[2] || '7d';
+            note = args.slice(3).join(' ') || `By ${message.author.username}`;
+        }
+
+        if (!serviceId) {
+            return message.reply({
+                embeds: [{
+                    color: 0xe74c3c,
+                    title: '❌ Service ID Required',
+                    description: '**Usage:** `!key create [serviceId] [duration] [note]`\n\n**Contoh:**\n`!key create abc123 7d My key`\n`!key create abc123 30d`\n\n**Lihat services:** `!service list`'
+                }]
+            });
+        }
 
         const result = await jnkieRequest('POST', '/keys', {
+            service_id: serviceId,
             duration: duration,
             note: note,
             max_hwids: 1
@@ -369,32 +441,69 @@ async function handleKey(message, args) {
                     title: '✅ Key Created', 
                     fields: [
                         { name: '🔑 Key', value: `\`${key}\`` },
-                        { name: '⏱️ Duration', value: duration, inline: true }
+                        { name: 'Service', value: `\`${serviceId}\``, inline: true },
+                        { name: 'Duration', value: duration, inline: true },
+                        { name: 'Note', value: note }
                     ]
                 }]
             });
-            try { await message.author.send(`🔑 Key: \`${key}\``); } catch (e) {}
+            try { await message.author.send(`🔑 Your Key: \`${key}\``); } catch (e) {}
             return;
         }
         return message.reply(`❌ Error: ${result.error}`);
     }
 
+    // !key batch [serviceId] [count] [duration]
     if (action === 'batch') {
-        const count = parseInt(args[1]) || 5;
-        const duration = args[2] || '7d';
+        let serviceId, count, duration;
+
+        // Check args
+        if (args[1] && !isNaN(parseInt(args[1]))) {
+            // !key batch 5 7d (tanpa serviceId)
+            serviceId = JNKIE_SERVICE_ID;
+            count = parseInt(args[1]) || 5;
+            duration = args[2] || '7d';
+        } else {
+            // !key batch [serviceId] [count] [duration]
+            serviceId = args[1] || JNKIE_SERVICE_ID;
+            count = parseInt(args[2]) || 5;
+            duration = args[3] || '7d';
+        }
+
+        if (!serviceId) {
+            return message.reply({
+                embeds: [{
+                    color: 0xe74c3c,
+                    title: '❌ Service ID Required',
+                    description: '**Usage:** `!key batch [serviceId] [count] [duration]`\n\n**Contoh:**\n`!key batch abc123 10 7d`'
+                }]
+            });
+        }
 
         const result = await jnkieRequest('POST', '/keys/batch', {
+            service_id: serviceId,
             count: count,
             duration: duration,
             max_hwids: 1
         });
 
         if (result.success) {
-            return message.reply({ embeds: [{ color: 0x2ecc71, title: `✅ ${count} Keys Created` }] });
+            const keys = result.data?.keys || result.data || [];
+            const keyList = Array.isArray(keys) 
+                ? keys.slice(0, 10).map(k => `\`${(k.key || k).substring(0, 30)}...\``).join('\n')
+                : 'Keys created';
+            return message.reply({ 
+                embeds: [{ 
+                    color: 0x2ecc71, 
+                    title: `✅ ${count} Keys Created`, 
+                    description: `Service: \`${serviceId}\`\nDuration: ${duration}\n\n${keyList}${keys.length > 10 ? `\n... dan ${keys.length - 10} lagi` : ''}`
+                }] 
+            });
         }
         return message.reply(`❌ Error: ${result.error}`);
     }
 
+    // !key get [keyId]
     if (action === 'get') {
         const keyId = args[1];
         if (!keyId) return message.reply('❌ Usage: `!key get [keyId]`');
@@ -409,7 +518,10 @@ async function handleKey(message, args) {
                     fields: [
                         { name: 'Key', value: `\`${k.key || k.id}\`` },
                         { name: 'Status', value: k.status || 'N/A', inline: true },
-                        { name: 'Expires', value: k.expires_at || 'N/A', inline: true }
+                        { name: 'Service', value: `\`${k.service_id || 'N/A'}\``, inline: true },
+                        { name: 'Expires', value: k.expires_at || 'N/A', inline: true },
+                        { name: 'HWIDs', value: `${k.hwids?.length || 0}/${k.max_hwids || 1}`, inline: true },
+                        { name: 'Note', value: k.note || 'N/A' }
                     ]
                 }]
             });
@@ -417,6 +529,7 @@ async function handleKey(message, args) {
         return message.reply(`❌ Error: ${result.error}`);
     }
 
+    // !key verify [key]
     if (action === 'verify') {
         const key = args[1];
         if (!key) return message.reply('❌ Usage: `!key verify [key]`');
@@ -424,14 +537,18 @@ async function handleKey(message, args) {
         const result = await jnkieRequest('GET', `/keys?key=${encodeURIComponent(key)}`);
         if (result.success && result.data) {
             const keys = Array.isArray(result.data) ? result.data : [result.data];
-            if (keys.length > 0) {
+            if (keys.length > 0 && keys[0].key) {
                 const k = keys[0];
                 const valid = k.status === 'active';
                 return message.reply({ 
                     embeds: [{ 
                         color: valid ? 0x2ecc71 : 0xe74c3c, 
-                        title: valid ? '✅ Valid' : '❌ Invalid',
-                        description: `Status: ${k.status || 'N/A'}`
+                        title: valid ? '✅ Key Valid' : '❌ Key Invalid',
+                        fields: [
+                            { name: 'Status', value: k.status || 'N/A', inline: true },
+                            { name: 'Expires', value: k.expires_at || 'N/A', inline: true },
+                            { name: 'Service', value: `\`${k.service_id || 'N/A'}\``, inline: true }
+                        ]
                     }]
                 });
             }
@@ -439,6 +556,7 @@ async function handleKey(message, args) {
         return message.reply({ embeds: [{ color: 0xe74c3c, title: '❌ Key Not Found' }] });
     }
 
+    // !key reset [keyId]
     if (action === 'reset') {
         const keyId = args[1];
         if (!keyId) return message.reply('❌ Usage: `!key reset [keyId]`');
@@ -450,17 +568,19 @@ async function handleKey(message, args) {
         return message.reply(`❌ Error: ${result.error}`);
     }
 
+    // !key delete [keyId]
     if (action === 'delete') {
         const keyId = args[1];
         if (!keyId) return message.reply('❌ Usage: `!key delete [keyId]`');
 
         const result = await jnkieRequest('DELETE', `/keys/${keyId}`);
         if (result.success) {
-            return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Deleted' }] });
+            return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Key Deleted' }] });
         }
         return message.reply(`❌ Error: ${result.error}`);
     }
 
+    // !key bulk-delete [key1,key2,...]
     if (action === 'bulk-delete') {
         const keysStr = args[1];
         if (!keysStr) return message.reply('❌ Usage: `!key bulk-delete [k1,k2,...]`');
@@ -468,12 +588,54 @@ async function handleKey(message, args) {
         const keys = keysStr.split(',').map(k => k.trim());
         const result = await jnkieRequest('POST', '/keys/bulk-delete', { keys: keys });
         if (result.success) {
-            return message.reply({ embeds: [{ color: 0x2ecc71, title: `✅ ${keys.length} Deleted` }] });
+            return message.reply({ embeds: [{ color: 0x2ecc71, title: `✅ ${keys.length} Keys Deleted` }] });
         }
         return message.reply(`❌ Error: ${result.error}`);
     }
 
-    return message.reply('❌ Usage: `!key [list|create|batch|get|verify|reset|delete|bulk-delete]`');
+    return message.reply({
+        embeds: [{
+            color: 0x2ecc71,
+            title: '🔑 Key Commands',
+            fields: [
+                { name: 'List', value: '`!key list [serviceId]`' },
+                { name: 'Create', value: '`!key create [serviceId] [duration] [note]`' },
+                { name: 'Batch', value: '`!key batch [serviceId] [count] [duration]`' },
+                { name: 'Get', value: '`!key get [keyId]`' },
+                { name: 'Verify', value: '`!key verify [key]`' },
+                { name: 'Reset', value: '`!key reset [keyId]`' },
+                { name: 'Delete', value: '`!key delete [keyId]`' },
+                { name: 'Bulk Delete', value: '`!key bulk-delete [k1,k2]`' }
+            ]
+        }]
+    });
+}
+
+async function handleStatus(message) {
+    const fields = [
+        { name: 'API Key', value: JNKIE_API_KEY ? '✅ Set' : '❌ Not Set', inline: true },
+        { name: 'Default Service', value: JNKIE_SERVICE_ID ? `\`${JNKIE_SERVICE_ID}\`` : '❌ Not Set', inline: true }
+    ];
+
+    // Test API connection
+    if (JNKIE_API_KEY) {
+        const result = await jnkieRequest('GET', '/services');
+        fields.push({ name: 'API Status', value: result.success ? '✅ Connected' : '❌ Error', inline: true });
+        
+        if (result.success) {
+            const services = Array.isArray(result.data) ? result.data : [];
+            fields.push({ name: 'Total Services', value: `${services.length}`, inline: true });
+        }
+    }
+
+    await message.reply({
+        embeds: [{
+            color: 0x3498db,
+            title: '📊 Status',
+            fields: fields,
+            timestamp: new Date()
+        }]
+    });
 }
 
 async function handleHelp(message) {
@@ -483,11 +645,13 @@ async function handleHelp(message) {
             title: '📖 Commands',
             fields: [
                 { name: '🔧 Obfuscator', value: '`!obf [preset]` + file\n`!presets`' },
-                { name: '📦 Services', value: '`!service [list|create|get|delete]`' },
+                { name: '📦 Services', value: '`!service list`\n`!service create [name] [desc]`\n`!service get [id]`\n`!service delete [id]`' },
                 { name: '🔌 Providers', value: '`!provider [list|create|get|delete]`' },
                 { name: '🔗 Integrations', value: '`!integration [list|types|create|get|delete]`' },
-                { name: '🔑 Keys', value: '`!key [list|create|batch|get|verify|reset|delete|bulk-delete]`' }
-            ]
+                { name: '🔑 Keys', value: '`!key list [serviceId]`\n`!key create [serviceId] [duration]`\n`!key batch [serviceId] [count] [duration]`\n`!key get/verify/reset/delete [id]`' },
+                { name: '📊 Status', value: '`!status` - Cek koneksi API' }
+            ],
+            footer: { text: 'Gunakan !service list untuk melihat Service ID' }
         }]
     });
 }
