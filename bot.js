@@ -36,9 +36,7 @@ if (!TOKEN) {
     process.exit(1);
 }
 
-// ========== PRESETS ==========
-
-// Prometheus Presets
+// ========== PROMETHEUS PRESETS ==========
 const PROMETHEUS_PRESETS = {
     minify: 'Minify',
     weak: 'Weak',
@@ -47,52 +45,103 @@ const PROMETHEUS_PRESETS = {
     vm: 'Vm'
 };
 
-// LuaObfuscator API Presets
+// ========== LUAOBFUSCATOR API PRESETS (SESUAI WEB) ==========
 const LUAOBF_PRESETS = {
-    minify: {
-        name: 'Minify',
-        options: {
-            MinifyAll: true
-        }
-    },
-    light: {
-        name: 'Light',
+    // 💀 Dystropic Malevolence (Terkuat)
+    dystropic: {
+        name: 'Dystropic Malevolence',
+        emoji: '💀',
         options: {
             MinifyAll: true,
-            EncryptStrings: true
+            Virtualize: true,
+            EncryptStrings: true,
+            EncryptFuncDeclaration: true,
+            ControlFlowFlattenV2: true,
+            MutateAllLiterals: true,
+            MixedBooleanArithmetic: true,
+            WowPacker: true
         }
     },
-    medium: {
-        name: 'Medium',
+    
+    // 😈 Chaotic Evil
+    evil: {
+        name: 'Chaotic Evil',
+        emoji: '😈',
+        options: {
+            MinifyAll: true,
+            EncryptStrings: true,
+            ControlFlowFlattenV2: true,
+            JunkifyAllIfStatements: true,
+            MutateAllLiterals: true,
+            SwizzleLookups: true,
+            TableIndirection: true
+        }
+    },
+    
+    // 😇 Chaotic Good
+    good: {
+        name: 'Chaotic Good',
+        emoji: '😇',
         options: {
             MinifyAll: true,
             EncryptStrings: true,
             ControlFlowFlattenV1: true,
+            MutateAllLiterals: true,
+            OptimizeDeadLocals: true
+        }
+    },
+    
+    // ⚡ OBFUSCATE V1
+    v1: {
+        name: 'OBFUSCATE V1',
+        emoji: '⚡',
+        options: {
+            MinifyAll: true,
+            EncryptStrings: true,
+            ControlFlowFlattenV1: true,
+            TableIndirection: true,
             MutateAllLiterals: true
         }
     },
-    strong: {
-        name: 'Strong',
+    
+    // 📜 OBFUSCATE (old)
+    old: {
+        name: 'OBFUSCATE (old)',
+        emoji: '📜',
         options: {
             MinifyAll: true,
             EncryptStrings: true,
-            ControlFlowFlattenV2: true,
-            MutateAllLiterals: true,
-            EncryptFuncDeclaration: true,
-            MixedBooleanArithmetic: true,
-            TableIndirection: true
+            ConstMaker: true
         }
     },
-    max: {
-        name: 'Maximum',
+    
+    // ✅ Basic Good
+    basic: {
+        name: 'Basic Good',
+        emoji: '✅',
         options: {
             MinifyAll: true,
             EncryptStrings: true,
-            ControlFlowFlattenV2: true,
-            Virtualize: true,
-            MutateAllLiterals: true,
-            EncryptFuncDeclaration: true,
-            WowPacker: true
+            MutateAllLiterals: true
+        }
+    },
+    
+    // 🟢 Basic Minimal
+    minimal: {
+        name: 'Basic Minimal',
+        emoji: '🟢',
+        options: {
+            MinifyAll: true,
+            Minifier: true
+        }
+    },
+    
+    // ✨ Beautify
+    beautify: {
+        name: 'Beautify',
+        emoji: '✨',
+        options: {
+            Minifier2: true
         }
     }
 };
@@ -146,16 +195,16 @@ async function handleObfuscate(message) {
                 description: 'Kirim file `.lua` untuk di-obfuscate!',
                 fields: [
                     {
-                        name: '📌 Cara Pakai:',
-                        value: '```\n!obfuscate [mode] [preset] + attach file.lua\n```'
+                        name: '📌 Cara Pakai',
+                        value: '```\n!obfuscate [mode] [preset] + attach file\n```'
                     },
                     {
-                        name: '🔧 Modes:',
-                        value: '`prometheus` / `prom` - Prometheus (lokal)\n`luaobf` / `lua` - LuaObfuscator API'
+                        name: '🔧 Modes',
+                        value: '`prom` - Prometheus (lokal)\n`lua` - LuaObfuscator API'
                     },
                     {
-                        name: '💡 Contoh:',
-                        value: '`!obfuscate prometheus strong`\n`!obfuscate luaobf max`\n`!obfuscate strong` (default: prometheus)'
+                        name: '💡 Contoh',
+                        value: '`!obfuscate prom strong`\n`!obfuscate lua evil`\n`!obfuscate lua dystropic`'
                     }
                 ]
             }]
@@ -203,7 +252,7 @@ async function handleObfuscate(message) {
             presetName = args[1]?.toLowerCase() || 'minify';
         } else if (['luaobf', 'lua', 'l', 'api'].includes(firstArg)) {
             mode = 'luaobf';
-            presetName = args[1]?.toLowerCase() || 'minify';
+            presetName = args[1]?.toLowerCase() || 'minimal';
         } else {
             // Assume it's a preset name for prometheus (backward compatibility)
             mode = 'prometheus';
@@ -256,7 +305,7 @@ async function handlePrometheus(message, attachment, presetName) {
         statusMsg = await message.reply({
             embeds: [{
                 color: 0x3498db,
-                title: '⏳ Prometheus Processing',
+                title: '🔧 Prometheus Processing',
                 description: `Obfuscating dengan preset: **${preset}**...`,
                 fields: [
                     { name: 'File', value: attachment.name, inline: true },
@@ -342,7 +391,7 @@ async function handlePrometheus(message, attachment, presetName) {
                     fields: [
                         { 
                             name: '💡 Saran', 
-                            value: '• Cek syntax script\n• Coba preset lain\n• Gunakan `!obfuscate luaobf` sebagai alternatif' 
+                            value: '• Cek syntax script\n• Coba preset lain\n• Gunakan `!obfuscate lua` sebagai alternatif' 
                         }
                     ]
                 }]
@@ -376,15 +425,15 @@ async function handleLuaObfuscatorAPI(message, attachment, presetName) {
             embeds: [{
                 color: 0xe74c3c,
                 title: '❌ API Key Tidak Tersedia',
-                description: 'LuaObfuscator API key belum di-set di environment variables.',
+                description: 'LuaObfuscator API key belum di-set.',
                 fields: [
-                    { name: '💡 Alternatif', value: 'Gunakan `!obfuscate prometheus` sebagai alternatif.' }
+                    { name: '💡 Alternatif', value: 'Gunakan `!obfuscate prom` sebagai alternatif.' }
                 ]
             }]
         });
     }
 
-    const preset = LUAOBF_PRESETS[presetName] || LUAOBF_PRESETS.minify;
+    const preset = LUAOBF_PRESETS[presetName] || LUAOBF_PRESETS.minimal;
     let statusMsg;
 
     try {
@@ -409,7 +458,7 @@ async function handleLuaObfuscatorAPI(message, attachment, presetName) {
         statusMsg = await message.reply({
             embeds: [{
                 color: 0x9b59b6,
-                title: '⏳ LuaObfuscator API',
+                title: `${preset.emoji} LuaObfuscator API`,
                 description: `Preset: **${preset.name}**\nMenghubungi API...`,
                 fields: [
                     { name: 'File', value: attachment.name, inline: true },
@@ -427,7 +476,7 @@ async function handleLuaObfuscatorAPI(message, attachment, presetName) {
         await statusMsg.edit({
             embeds: [{
                 color: 0x9b59b6,
-                title: '⏳ Step 1/2: Uploading Script...',
+                title: `${preset.emoji} Step 1/2: Uploading...`,
                 description: 'Mengirim script ke server...'
             }]
         });
@@ -443,8 +492,8 @@ async function handleLuaObfuscatorAPI(message, attachment, presetName) {
             await statusMsg.edit({
                 embeds: [{
                     color: 0x9b59b6,
-                    title: '⏳ Step 2/2: Obfuscating...',
-                    description: `Session aktif, memproses...`
+                    title: `${preset.emoji} Step 2/2: Obfuscating...`,
+                    description: `Preset: **${preset.name}**\nSession aktif, memproses...`
                 }]
             });
 
@@ -492,17 +541,18 @@ async function handleLuaObfuscatorAPI(message, attachment, presetName) {
 
             const buffer = Buffer.from(obfuscatedCode, 'utf8');
             const outputFile = new AttachmentBuilder(buffer, {
-                name: `luaobf_${attachment.name.replace('.txt', '.lua')}`
+                name: `luaobf_${presetName}_${attachment.name.replace('.txt', '.lua')}`
             });
 
             await statusMsg.edit({
                 embeds: [{
                     color: 0x9b59b6,
-                    title: '✅ LuaObfuscator Berhasil!',
+                    title: `${preset.emoji} LuaObfuscator Berhasil!`,
+                    description: `Preset: **${preset.name}**`,
                     fields: [
                         { name: 'Original', value: `${(originalSize / 1024).toFixed(2)} KB`, inline: true },
                         { name: 'Obfuscated', value: `${(obfuscatedSize / 1024).toFixed(2)} KB`, inline: true },
-                        { name: 'Preset', value: preset.name, inline: true }
+                        { name: 'Ratio', value: `${((obfuscatedSize / originalSize) * 100).toFixed(0)}%`, inline: true }
                     ],
                     footer: { text: '🌐 LuaObfuscator API' },
                     timestamp: new Date()
@@ -519,7 +569,7 @@ async function handleLuaObfuscatorAPI(message, attachment, presetName) {
                     fields: [
                         { 
                             name: '💡 Solusi', 
-                            value: '• Coba lagi dalam beberapa detik\n• Gunakan `!obfuscate prometheus` sebagai alternatif\n• Cek API key valid di dashboard LuaObfuscator' 
+                            value: '• Coba preset lain (misal: `minimal` atau `basic`)\n• Gunakan `!obfuscate prom` sebagai alternatif\n• Cek API key valid di dashboard LuaObfuscator' 
                         }
                     ]
                 }]
@@ -534,7 +584,7 @@ async function handleLuaObfuscatorAPI(message, attachment, presetName) {
             title: '❌ Error',
             description: `\`${err.message}\``,
             fields: [
-                { name: '💡 Alternatif', value: 'Gunakan `!obfuscate prometheus`' }
+                { name: '💡 Alternatif', value: 'Gunakan `!obfuscate prom`' }
             ]
         };
 
@@ -811,7 +861,7 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ========== OTHER COMMAND HANDLERS ==========
+// ========== COMMAND HANDLERS ==========
 
 async function handleHelp(message) {
     await message.reply({
@@ -822,22 +872,22 @@ async function handleHelp(message) {
             fields: [
                 {
                     name: '🔧 Modes',
-                    value: '`prometheus` / `prom` - Prometheus (lokal, offline)\n`luaobf` / `lua` - LuaObfuscator (API, online)'
+                    value: '`prom` - Prometheus (lokal)\n`lua` - LuaObfuscator API'
                 },
                 {
                     name: '📌 Commands',
                     value: '`!obfuscate [mode] [preset]` + file\n`!presets` - Lihat semua preset\n`!test` - Test kedua obfuscator\n`!example` - Download contoh script\n`!help` - Bantuan ini'
                 },
                 {
-                    name: '💡 Contoh Penggunaan',
-                    value: '```\n!obfuscate prometheus strong\n!obfuscate prom vm\n!obfuscate luaobf max\n!obfuscate lua medium\n!obfuscate strong  (default: prometheus)\n```'
+                    name: '💡 Contoh Prometheus',
+                    value: '```\n!obfuscate prom minify\n!obfuscate prom strong\n!obfuscate prom vm\n```'
                 },
                 {
-                    name: '📝 Format File',
-                    value: 'Support: `.lua`, `.txt`\nMax size: 5MB'
+                    name: '💡 Contoh LuaObfuscator',
+                    value: '```\n!obfuscate lua minimal\n!obfuscate lua evil\n!obfuscate lua dystropic\n```'
                 }
             ],
-            footer: { text: 'Prometheus (Offline) + LuaObfuscator API (Online)' }
+            footer: { text: 'Gunakan !presets untuk melihat semua preset' }
         }]
     });
 }
@@ -845,22 +895,40 @@ async function handleHelp(message) {
 async function handlePresets(message) {
     await message.reply({
         embeds: [{
-            color: 0x3498db,
+            color: 0x9b59b6,
             title: '🎨 Daftar Presets',
             fields: [
                 {
-                    name: '🔧 Prometheus Presets',
-                    value: '`minify` - Minify only (paling ringan)\n`weak` - Obfuscation ringan\n`medium` - Obfuscation sedang\n`strong` - Obfuscation kuat\n`vm` - Virtual Machine (terkuat)'
+                    name: '🌐 LuaObfuscator API',
+                    value: 
+                        '💀 `dystropic` - Dystropic Malevolence (Max)\n' +
+                        '😈 `evil` - Chaotic Evil\n' +
+                        '😇 `good` - Chaotic Good\n' +
+                        '⚡ `v1` - OBFUSCATE V1\n' +
+                        '📜 `old` - OBFUSCATE (old)\n' +
+                        '✅ `basic` - Basic Good\n' +
+                        '🟢 `minimal` - Basic Minimal\n' +
+                        '✨ `beautify` - Beautify'
                 },
                 {
-                    name: '🌐 LuaObfuscator API Presets',
-                    value: '`minify` - Minify only\n`light` - + Encrypt strings\n`medium` - + Control flow flatten\n`strong` - + Multiple protections\n`max` - + Virtualize (terkuat)'
+                    name: '🔧 Prometheus (Lokal)',
+                    value: 
+                        '`minify` - Minify Only\n' +
+                        '`weak` - Weak protection\n' +
+                        '`medium` - Medium protection\n' +
+                        '`strong` - Strong protection\n' +
+                        '`vm` - Virtual Machine'
                 },
                 {
                     name: '💡 Rekomendasi',
-                    value: '• Script kecil: `minify` atau `light`\n• Script biasa: `medium`\n• Script penting: `strong` atau `vm`/`max`'
+                    value: 
+                        '**Ringan:** `!obfuscate lua minimal`\n' +
+                        '**Sedang:** `!obfuscate lua v1`\n' +
+                        '**Kuat:** `!obfuscate lua evil`\n' +
+                        '**Maximum:** `!obfuscate lua dystropic`'
                 }
-            ]
+            ],
+            footer: { text: 'Format: !obfuscate [lua/prom] [preset]' }
         }]
     });
 }
@@ -975,8 +1043,15 @@ print("Script loaded!")`;
             description: 'Download file ini dan coba obfuscate!',
             fields: [
                 {
-                    name: '💡 Cara pakai',
-                    value: '1. Download file dibawah\n2. Upload ulang dengan command:\n   `!obfuscate prometheus strong`\n   atau\n   `!obfuscate luaobf max`'
+                    name: '💡 Cara Pakai',
+                    value: 
+                        '1. Download file dibawah\n' +
+                        '2. Upload dengan salah satu command:\n' +
+                        '```\n' +
+                        '!obfuscate prom strong\n' +
+                        '!obfuscate lua evil\n' +
+                        '!obfuscate lua dystropic\n' +
+                        '```'
                 }
             ]
         }],
