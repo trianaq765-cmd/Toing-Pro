@@ -62,17 +62,15 @@ const PRESETS = {
     },
     max: {
         name: 'Maximum',
-        value: 'Max',
         emoji: '💀',
         custom: true,
-        steps: ['Strong', 'Vm']
+        type: 'max'
     },
     custom: {
         name: 'Custom (Roblox)',
-        value: 'Custom',
         emoji: '⚡',
         custom: true,
-        steps: ['Minify', 'Weak', 'Medium', 'Strong']
+        type: 'custom'
     }
 };
 
@@ -157,11 +155,7 @@ async function handleObfuscate(message) {
     const timestamp = Date.now();
     const inputPath = path.join(PROMETHEUS_PATH, `temp_${timestamp}_input.lua`);
     const outputPath = path.join(PROMETHEUS_PATH, `temp_${timestamp}_output.lua`);
-    const tempPaths = [];
-
-    for (let i = 0; i < 5; i++) {
-        tempPaths.push(path.join(PROMETHEUS_PATH, `temp_${timestamp}_step${i}.lua`));
-    }
+    const tempPath = path.join(PROMETHEUS_PATH, `temp_${timestamp}_temp.lua`);
 
     let statusMsg;
 
@@ -196,89 +190,49 @@ async function handleObfuscate(message) {
         let usedPreset = preset.name;
         let errorOutput = '';
 
-        if (preset.custom && preset.steps) {
-            try {
-                let currentInput = inputPath;
-                let currentOutput;
-                
-                for (let i = 0; i < preset.steps.length; i++) {
-                    const step = preset.steps[i];
-                    currentOutput = (i === preset.steps.length - 1) ? outputPath : tempPaths[i];
-                    
-                    await statusMsg.edit({
-                        embeds: [{
-                            color: 0xf39c12,
-                            title: `${preset.emoji} Processing...`,
-                            description: `Step ${i + 1}/${preset.steps.length}: **${step}**`
-                        }]
-                    });
-
-                    const command = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset ${step} "${currentInput}" --out "${currentOutput}" 2>&1`;
-                    await execAsync(command, { timeout: 120000 });
-
-                    if (!fs.existsSync(currentOutput) || fs.statSync(currentOutput).size === 0) {
-                        throw new Error(`Step ${step} failed`);
-                    }
-
-                    currentInput = currentOutput;
-                }
-
-                if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-                    success = true;
-                }
-            } catch (err) {
-                errorOutput = err.message;
+        if (preset.custom) {
+            if (preset.type === 'max') {
+                success = await runMaxPreset(inputPath, outputPath, tempPath, statusMsg, preset);
+                if (success) usedPreset = 'Maximum (Strong + VM)';
+            } else if (preset.type === 'custom') {
+                success = await runCustomPreset(inputPath, outputPath, tempPath, statusMsg, preset);
+                if (success) usedPreset = 'Custom (Roblox)';
             }
 
             if (!success) {
-                try {
-                    cleanupFiles(outputPath);
-                    const fallback = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Strong "${inputPath}" --out "${outputPath}" 2>&1`;
-                    await execAsync(fallback, { timeout: 120000 });
-
-                    if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-                        success = true;
-                        usedPreset = 'Strong (Fallback)';
-                    }
-                } catch (err) {
-                    errorOutput = err.message || errorOutput;
-                }
+                const fallbackResult = await runFallback(inputPath, outputPath);
+                success = fallbackResult.success;
+                errorOutput = fallbackResult.error;
+                if (success) usedPreset = 'Strong (Fallback)';
             }
         } else {
-            try {
-                const command = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset ${preset.value} "${inputPath}" --out "${outputPath}" 2>&1`;
-                const { stdout, stderr } = await execAsync(command, { timeout: 120000 });
-
-                if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-                    success = true;
-                } else {
-                    errorOutput = stdout || stderr || 'No output';
-                }
-            } catch (err) {
-                errorOutput = err.stderr || err.message;
-            }
+            const result = await runSinglePreset(inputPath, outputPath, preset.value);
+            success = result.success;
+            errorOutput = result.error;
 
             if (!success) {
-                try {
-                    cleanupFiles(outputPath);
-                    const fallback = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua "${inputPath}" --out "${outputPath}" 2>&1`;
-                    const { stdout, stderr } = await execAsync(fallback, { timeout: 120000 });
-
-                    if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-                        success = true;
-                        usedPreset = 'Default';
-                    } else {
-                        errorOutput = stdout || stderr || errorOutput;
-                    }
-                } catch (err) {
-                    errorOutput = err.message || errorOutput;
-                }
+                const fallbackResult = await runFallback(inputPath, outputPath);
+                success = fallbackResult.success;
+                errorOutput = fallbackResult.error || errorOutput;
+                if (success) usedPreset = 'Default';
             }
         }
 
-        if (success) {
-            const originalSize = Buffer.byteLength(cleanedCode, 'utf8');
+        if (success && fs.existsSync(outputPath)) {
             const obfuscatedCode = fs.readFileSync(outputPath, 'utf8');
+            
+            if (!obfuscatedCode || obfuscatedCode.length < 10) {
+                await statusMsg.edit({
+                    embeds: [{
+                        color: 0xe74c3c,
+                        title: '❌ Gagal',
+                        description: 'Output file kosong'
+                    }]
+                });
+                return;
+            }
+
+            const originalSize = Buffer.byteLength(cleanedCode, 'utf8');
             const finalCode = HEADER + obfuscatedCode;
             const obfuscatedSize = Buffer.byteLength(finalCode, 'utf8');
             const ratio = ((obfuscatedSize / originalSize) * 100).toFixed(0);
@@ -307,7 +261,7 @@ async function handleObfuscate(message) {
                 embeds: [{
                     color: 0xe74c3c,
                     title: '❌ Gagal',
-                    description: `\`\`\`${errorOutput.substring(0, 500)}\`\`\``
+                    description: `\`\`\`${(errorOutput || 'Unknown error').substring(0, 500)}\`\`\``
                 }]
             });
         }
@@ -324,7 +278,121 @@ async function handleObfuscate(message) {
             }).catch(() => {});
         }
     } finally {
-        cleanupFiles(inputPath, outputPath, ...tempPaths);
+        cleanupFiles(inputPath, outputPath, tempPath);
+    }
+}
+
+async function runSinglePreset(inputPath, outputPath, presetValue) {
+    try {
+        const command = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset ${presetValue} "${inputPath}" --out "${outputPath}" 2>&1`;
+        const { stdout, stderr } = await execAsync(command, { timeout: 120000 });
+
+        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+            return { success: true };
+        }
+        return { success: false, error: stdout || stderr || 'No output' };
+    } catch (err) {
+        return { success: false, error: err.stderr || err.message };
+    }
+}
+
+async function runMaxPreset(inputPath, outputPath, tempPath, statusMsg, preset) {
+    try {
+        await statusMsg.edit({
+            embeds: [{
+                color: 0xf39c12,
+                title: `${preset.emoji} Processing...`,
+                description: 'Step 1/2: **Strong**'
+            }]
+        });
+
+        const step1 = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Strong "${inputPath}" --out "${tempPath}" 2>&1`;
+        await execAsync(step1, { timeout: 120000 });
+
+        if (!fs.existsSync(tempPath) || fs.statSync(tempPath).size === 0) {
+            return false;
+        }
+
+        await statusMsg.edit({
+            embeds: [{
+                color: 0xf39c12,
+                title: `${preset.emoji} Processing...`,
+                description: 'Step 2/2: **Virtual Machine**'
+            }]
+        });
+
+        const step2 = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Vm "${tempPath}" --out "${outputPath}" 2>&1`;
+        await execAsync(step2, { timeout: 180000 });
+
+        return fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0;
+    } catch (err) {
+        console.error('Max preset error:', err.message);
+        return false;
+    }
+}
+
+async function runCustomPreset(inputPath, outputPath, tempPath, statusMsg, preset) {
+    try {
+        await statusMsg.edit({
+            embeds: [{
+                color: 0xf39c12,
+                title: `${preset.emoji} Processing...`,
+                description: 'Step 1/2: **Medium** (String Encryption + Control Flow)'
+            }]
+        });
+
+        const step1 = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Medium "${inputPath}" --out "${tempPath}" 2>&1`;
+        await execAsync(step1, { timeout: 120000 });
+
+        if (!fs.existsSync(tempPath) || fs.statSync(tempPath).size === 0) {
+            const directStrong = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Strong "${inputPath}" --out "${outputPath}" 2>&1`;
+            await execAsync(directStrong, { timeout: 120000 });
+            return fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0;
+        }
+
+        await statusMsg.edit({
+            embeds: [{
+                color: 0xf39c12,
+                title: `${preset.emoji} Processing...`,
+                description: 'Step 2/2: **Strong** (Multi-layer + Anti-debug)'
+            }]
+        });
+
+        const step2 = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Strong "${tempPath}" --out "${outputPath}" 2>&1`;
+        await execAsync(step2, { timeout: 120000 });
+
+        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+            return true;
+        }
+
+        fs.copyFileSync(tempPath, outputPath);
+        return fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0;
+    } catch (err) {
+        console.error('Custom preset error:', err.message);
+        
+        try {
+            const fallbackStrong = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Strong "${inputPath}" --out "${outputPath}" 2>&1`;
+            await execAsync(fallbackStrong, { timeout: 120000 });
+            return fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0;
+        } catch (e) {
+            return false;
+        }
+    }
+}
+
+async function runFallback(inputPath, outputPath) {
+    try {
+        if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+        
+        const fallback = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Strong "${inputPath}" --out "${outputPath}" 2>&1`;
+        const { stdout, stderr } = await execAsync(fallback, { timeout: 120000 });
+
+        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+            return { success: true };
+        }
+        return { success: false, error: stdout || stderr };
+    } catch (err) {
+        return { success: false, error: err.message };
     }
 }
 
@@ -382,11 +450,11 @@ async function handlePresets(message) {
                 },
                 {
                     name: '💀 Max',
-                    value: 'Strong + VM'
+                    value: 'Strong → VM (Maximum)'
                 },
                 {
                     name: '⚡ Custom (Roblox)',
-                    value: 'Minify → Weak → Medium → Strong\n(Best untuk Roblox scripts)'
+                    value: 'Medium → Strong\n• String encryption\n• Control flow\n• Multi-layer\n• Anti-debug\n*(Optimized untuk Roblox)*'
                 }
             ]
         }]
