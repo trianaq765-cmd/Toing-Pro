@@ -49,28 +49,20 @@ client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
     const content = message.content.trim();
-    // Split tapi pertahankan JSON body jika ada
-    const firstSpace = content.indexOf(' ');
-    const cmd = firstSpace === -1 ? content.toLowerCase() : content.substring(0, firstSpace).toLowerCase();
-    
-    // Args parsing yang lebih cerdas untuk JSON
-    const rest = firstSpace === -1 ? '' : content.substring(firstSpace + 1);
-    const args = rest.split(/\s+/);
+    const args = content.split(/\s+/).slice(1);
+    const cmd = content.split(/\s+/)[0].toLowerCase();
 
     try {
-        // Prometheus
         if (cmd === '!obf') await handleObfuscate(message);
         else if (cmd === '!presets') await handlePresets(message);
-        
-        // jnkie API Explorer (BARU)
-        else if (cmd === '!api') await handleApiTest(message, rest);
-        else if (cmd === '!discover') await handleDiscovery(message);
-        
-        // jnkie Standard (Services/Keys)
-        else if (cmd === '!service') await handleService(message, args);
-        else if (cmd === '!key') await handleKey(message, args);
+        else if (cmd === '!scan') await handleScan(message, args); // Fitur Baru!
+        else if (cmd === '!debug') await handleDebug(message);
+        else if (cmd === '!status') await handleStatus(message);
         else if (cmd === '!help') await handleHelp(message);
         
+        // Standard jnkie commands
+        else if (cmd === '!service') await handleService(message, args);
+        else if (cmd === '!key') await handleKey(message, args);
     } catch (err) {
         console.error(err);
         message.reply(`❌ System Error: ${err.message}`);
@@ -78,146 +70,144 @@ client.on('messageCreate', async (message) => {
 });
 
 // ================================================================
-// 🕵️ API EXPLORER & DISCOVERY (FITUR BARU)
+// 🕵️ SUPER SCANNER (!scan)
 // ================================================================
-
-// Command: !api [METHOD] [ENDPOINT] [JSON_BODY]
-// Contoh: !api GET /scripts
-// Contoh: !api POST /scripts {"name":"test"}
-async function handleApiTest(message, rawArgs) {
+async function handleScan(message, args) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
 
-    const args = rawArgs.split(/\s+/);
-    const method = args[0]?.toUpperCase();
-    const endpoint = args[1];
-    
-    // Ambil JSON body jika ada
-    let body = null;
-    const bodyStartIndex = rawArgs.indexOf('{');
-    if (bodyStartIndex !== -1 && ['POST', 'PUT', 'PATCH'].includes(method)) {
-        try {
-            const jsonStr = rawArgs.substring(bodyStartIndex);
-            body = JSON.parse(jsonStr);
-        } catch (e) {
-            return message.reply('❌ Format JSON body salah');
-        }
-    }
+    const filter = args[0] ? args[0].toLowerCase() : null;
+    const statusMsg = await message.reply(`🕵️ **Scanning API Endpoints...** ${filter ? `(Filter: ${filter})` : '(Full Scan)'}`);
 
-    if (!method || !endpoint) {
-        return message.reply({
-            embeds: [{
-                color: 0x3498db,
-                title: '🕵️ API Explorer',
-                description: 'Kirim request manual ke jnkie API',
-                fields: [
-                    { name: 'Syntax', value: '`!api [METHOD] [ENDPOINT] [JSON]`' },
-                    { name: 'Contoh GET', value: '`!api GET /services`\n`!api GET /scripts`' },
-                    { name: 'Contoh POST', value: '`!api POST /services {"name":"Test"}`' }
-                ]
-            }]
-        });
-    }
-
-    const statusMsg = await message.reply(`🔄 **${method}** \`/api/v2${endpoint}\`...`);
-
-    const result = await jnkieRequestDebug(method, endpoint, body);
-
-    // Format output
-    let color = result.statusCode >= 200 && result.statusCode < 300 ? 0x2ecc71 : 0xe74c3c;
-    let description = `**Status:** \`${result.statusCode}\`\n**Time:** \`${result.time}ms\``;
-    
-    // Potong output jika terlalu panjang
-    let responseStr = JSON.stringify(result.data, null, 2);
-    if (responseStr.length > 1500) {
-        // Kirim sebagai file jika panjang
-        const file = new AttachmentBuilder(Buffer.from(responseStr), { name: 'response.json' });
-        await statusMsg.edit({
-            embeds: [{ color, title: '📡 API Response', description }],
-            files: [file]
-        });
-    } else {
-        // Kirim dalam code block
-        await statusMsg.edit({
-            embeds: [{
-                color,
-                title: '📡 API Response',
-                description: description + `\n\`\`\`json\n${responseStr}\n\`\`\``
-            }]
-        });
-    }
-}
-
-// Command: !discover
-// Mencoba daftar endpoint umum untuk mencari fitur script/obfuscator
-async function handleDiscovery(message) {
-    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
-
-    const statusMsg = await message.reply('🕵️ **Scanning endpoints...** Mencoba menebak endpoint script/obfuscator.');
-
-    // Daftar tebakan endpoint
-    const guesses = [
-        '/scripts',
-        '/script',
-        '/loader',
-        '/loaders',
-        '/obfuscate',
-        '/obfuscator',
-        '/obfuscation',
-        '/projects',
-        '/apps',
-        '/products',
-        '/files',
-        '/assets'
+    // Daftar 100+ endpoint umum
+    const keywords = [
+        // Core
+        'script', 'scripts', 'loader', 'loaders', 'loadstring',
+        'obfuscate', 'obfuscator', 'obfuscation', 'protect', 'protection',
+        'upload', 'download', 'file', 'files', 'asset', 'assets',
+        'project', 'projects', 'app', 'apps', 'application', 'applications',
+        'product', 'products', 'item', 'items',
+        
+        // Config & Settings
+        'config', 'configs', 'setting', 'settings', 'option', 'options',
+        'variable', 'variables', 'var', 'vars', 'env', 'environment',
+        'secret', 'secrets', 'key', 'keys', 'license', 'licenses',
+        
+        // User & Auth
+        'user', 'users', 'me', 'profile', 'account', 'auth', 'login',
+        'session', 'sessions', 'token', 'tokens',
+        
+        // System
+        'log', 'logs', 'analytic', 'analytics', 'stat', 'stats',
+        'version', 'versions', 'update', 'updates', 'build', 'builds',
+        'webhook', 'webhooks', 'integration', 'integrations',
+        
+        // Specific
+        'whitelist', 'blacklist', 'hwid', 'hwids', 'ip', 'ips',
+        'execute', 'executor', 'execution', 'run', 'runner',
+        'compile', 'compiler', 'build', 'builder',
+        'luraph', 'ironbrew', 'psu', 'synapse', 'xen'
     ];
 
-    let found = [];
-    let notFound = [];
+    let targets = [];
 
-    for (const ep of guesses) {
-        const result = await jnkieRequest('GET', ep);
-        // 404 = Tidak ada
-        // 401/403 = Ada tapi butuh izin/salah method
-        // 200 = Ada dan sukses
-        // 405 = Method Not Allowed (Berarti endpoint ADA, tapi mungkin butuh POST)
+    // Generate endpoint list
+    keywords.forEach(w => {
+        // Root endpoints
+        targets.push(`/${w}`);
+        targets.push(`/v1/${w}`); // Versi 1
+        targets.push(`/api/${w}`); // Common prefix
         
-        if (result.statusCode !== 404) {
-            found.push({ path: ep, status: result.statusCode });
-        } else {
-            notFound.push(ep);
-        }
-    }
-
-    let desc = '';
-    if (found.length > 0) {
-        desc += '**✅ Endpoint Ditemukan (Potential):**\n';
-        desc += found.map(f => `\`${f.path}\` (Status: ${f.status})`).join('\n');
-    } else {
-        desc += '❌ Tidak ada endpoint umum yang ditemukan.';
-    }
-
-    desc += '\n\n**Note:**\n`200` = Akses OK\n`401/403` = Butuh izin/scope\n`405` = Salah method (Coba POST)';
-
-    await statusMsg.edit({
-        embeds: [{
-            color: found.length > 0 ? 0x2ecc71 : 0xe74c3c,
-            title: '🕵️ Discovery Results',
-            description: desc
-        }]
+        // Plural/Singular check (manual simple)
+        if (!w.endsWith('s')) targets.push(`/${w}s`);
     });
+
+    // Nested endpoints (jika ada Service ID)
+    if (JNKIE_SERVICE_ID) {
+        keywords.forEach(w => {
+            targets.push(`/services/${JNKIE_SERVICE_ID}/${w}`);
+            targets.push(`/service/${JNKIE_SERVICE_ID}/${w}`);
+        });
+    }
+
+    // Filter list
+    if (filter) {
+        targets = targets.filter(t => t.includes(filter));
+    }
+
+    // Hapus duplikat
+    targets = [...new Set(targets)];
+
+    // Scan process
+    const batchSize = 20; // Jangan terlalu agresif
+    let found = [];
+    
+    for (let i = 0; i < targets.length; i += batchSize) {
+        const batch = targets.slice(i, i + batchSize);
+        const progress = Math.round((i / targets.length) * 100);
+        
+        await statusMsg.edit(`🕵️ Scanning... ${progress}% (${found.length} found)`);
+
+        const promises = batch.map(path => jnkieRequest('GET', path).then(res => ({ path, ...res })));
+        const results = await Promise.all(promises);
+
+        results.forEach(res => {
+            // Kita cari status code selain 404 (Not Found)
+            if (res.statusCode !== 404) {
+                found.push({
+                    path: res.path,
+                    status: res.statusCode,
+                    method: 'GET' // Default probe method
+                });
+            }
+        });
+        
+        // Delay kecil untuk menghindari rate limit
+        await new Promise(r => setTimeout(r, 500));
+    }
+
+    if (found.length === 0) {
+        await statusMsg.edit('❌ **Scan Selesai:** Tidak ada endpoint yang ditemukan.');
+    } else {
+        // Sort by status code (200 first)
+        found.sort((a, b) => a.status - b.status);
+
+        const list = found.map(f => {
+            let icon = '❓';
+            let note = '';
+            
+            if (f.status >= 200 && f.status < 300) { icon = '✅'; note = 'Active'; }
+            else if (f.status === 401) { icon = '🔒'; note = 'Auth Required'; }
+            else if (f.status === 403) { icon = '🚫'; note = 'Forbidden'; }
+            else if (f.status === 405) { icon = '✋'; note = 'Method Not Allowed (Try POST)'; }
+            else if (f.status === 500) { icon = '🔥'; note = 'Server Error'; }
+            
+            return `${icon} \`${f.path}\` (${f.status}) - ${note}`;
+        }).join('\n');
+
+        await statusMsg.edit({
+            content: null,
+            embeds: [{
+                color: 0x2ecc71,
+                title: '🕵️ Scan Results',
+                description: list.substring(0, 4000),
+                footer: { text: `Total Scanned: ${targets.length} | Found: ${found.length}` },
+                timestamp: new Date()
+            }]
+        });
+    }
 }
 
 // ================================================================
-// JNKIE API HELPER (DEBUG VERSION)
+// JNKIE API HELPER (Standard)
 // ================================================================
-function jnkieRequestDebug(method, endpoint, body = null) {
+function jnkieRequest(method, endpoint, body = null) {
     return new Promise((resolve) => {
-        const start = Date.now();
         const postData = body ? JSON.stringify(body) : '';
         
         const options = {
             hostname: 'api.jnkie.com',
             port: 443,
-            path: `/api/v2${endpoint}`,
+            path: `/api/v2${endpoint}`, // Base path v2
             method: method,
             headers: {
                 'Authorization': `Bearer ${JNKIE_API_KEY}`,
@@ -232,58 +222,57 @@ function jnkieRequestDebug(method, endpoint, body = null) {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
-                const time = Date.now() - start;
                 try {
                     const json = JSON.parse(data);
                     resolve({ 
-                        statusCode: res.statusCode, 
-                        data: json,
-                        time: time
+                        success: res.statusCode >= 200 && res.statusCode < 300, 
+                        data: json.data || json, 
+                        error: json.message || json.error,
+                        statusCode: res.statusCode
                     });
                 } catch (e) {
-                    resolve({ 
-                        statusCode: res.statusCode, 
-                        data: data, // Return raw text if not JSON
-                        time: time
-                    });
+                    resolve({ success: false, error: 'Invalid JSON', statusCode: res.statusCode });
                 }
             });
         });
 
-        req.on('error', (e) => resolve({ statusCode: 0, data: e.message, time: 0 }));
-        req.setTimeout(15000, () => { req.destroy(); resolve({ statusCode: 408, data: 'Timeout', time: 15000 }); });
+        req.on('error', (e) => resolve({ success: false, error: e.message, statusCode: 0 }));
+        req.setTimeout(15000, () => { req.destroy(); resolve({ success: false, error: 'Timeout', statusCode: 408 }); });
 
         if (body) req.write(postData);
         req.end();
     });
 }
 
-// Standard Request Helper (untuk command biasa)
-function jnkieRequest(method, endpoint, body = null) {
-    return new Promise((resolve) => {
-        const postData = body ? JSON.stringify(body) : '';
-        const options = {
-            hostname: 'api.jnkie.com',
-            port: 443,
-            path: `/api/v2${endpoint}`,
-            method: method,
-            headers: { 'Authorization': `Bearer ${JNKIE_API_KEY}`, 'Content-Type': 'application/json' }
-        };
-        if (body) options.headers['Content-Length'] = Buffer.byteLength(postData);
+// ================================================================
+// DEBUG MANUAL (!debug)
+// ================================================================
+async function handleDebug(message) {
+    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
+    const statusMsg = await message.reply('🔍 Checking base endpoints...');
+    
+    const endpoints = [
+        '/services', 
+        '/providers', 
+        '/integrations',
+        '/keys',
+        '/me',
+        '/user'
+    ];
 
-        const req = https.request(options, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-                try {
-                    const json = JSON.parse(data);
-                    resolve({ success: res.statusCode >= 200 && res.statusCode < 300, data: json.data || json, error: json.message, statusCode: res.statusCode });
-                } catch (e) { resolve({ success: false, statusCode: res.statusCode }); }
-            });
-        });
-        req.on('error', (e) => resolve({ success: false, error: e.message }));
-        if (body) req.write(postData);
-        req.end();
+    let resultTxt = '';
+    for (const ep of endpoints) {
+        const res = await jnkieRequest('GET', ep);
+        const icon = res.success ? '✅' : '❌';
+        resultTxt += `${icon} \`${ep}\` (${res.statusCode})\n`;
+    }
+
+    await statusMsg.edit({
+        embeds: [{
+            title: '🔍 API Debug',
+            description: resultTxt,
+            color: 0x3498db
+        }]
     });
 }
 
@@ -324,26 +313,24 @@ async function handleObfuscate(message) {
 }
 
 // ================================================================
-// STANDARD COMMANDS (Service/Key/Help)
+// STANDARD HANDLERS (Service/Key/Help)
 // ================================================================
 async function handleService(message, args) {
     if (args[0] === 'list') {
         const res = await jnkieRequest('GET', '/services');
-        if (!res.success) return message.reply(`❌ Error: ${res.statusCode}`);
         const list = (Array.isArray(res.data) ? res.data : []).map(s => `• ${s.name} (\`${s.id}\`)`).join('\n') || 'No services';
         return message.reply({ embeds: [{ title: '📦 Services', description: list, color: 0x3498db }] });
     }
-    message.reply('Usage: `!service list` (More commands in `!help`)');
+    message.reply('Usage: `!service list`');
 }
 
 async function handleKey(message, args) {
     if (args[0] === 'list') {
         const res = await jnkieRequest('GET', '/keys?limit=10');
-        if (!res.success) return message.reply(`❌ Error: ${res.statusCode}`);
         const list = (Array.isArray(res.data) ? res.data : []).map(k => `• \`${k.key || k.id}\``).join('\n') || 'No keys';
         return message.reply({ embeds: [{ title: '🔑 Keys', description: list, color: 0x2ecc71 }] });
     }
-    message.reply('Usage: `!key list` (More commands in `!help`)');
+    message.reply('Usage: `!key list`');
 }
 
 async function handleHelp(message) {
@@ -352,7 +339,7 @@ async function handleHelp(message) {
             title: '📖 Bot Commands',
             color: 0x9b59b6,
             fields: [
-                { name: '🕵️ Explorer (New)', value: '`!discover` - Cari endpoint otomatis\n`!api [GET/POST] [endpoint] [json]` - Test manual' },
+                { name: '🕵️ Explorer', value: '`!scan` - Scan semua endpoint\n`!scan [word]` - Scan spesifik (misal `!scan script`)' },
                 { name: '🔧 Obfuscator', value: '`!obf [preset]` + file' },
                 { name: '📦 Management', value: '`!service list`\n`!key list`' }
             ]
@@ -362,6 +349,10 @@ async function handleHelp(message) {
 
 async function handlePresets(message) {
     message.reply('Presets: 🟢 `minify` | 🔵 `weak` | 🟡 `medium`');
+}
+
+function handleStatus(message) {
+    message.reply('Bot Online ✅');
 }
 
 // ================================================================
