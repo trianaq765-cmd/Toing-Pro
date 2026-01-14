@@ -1,35 +1,41 @@
 FROM node:18-slim
 
-# Install Lua 5.1
 RUN apt-get update && apt-get install -y \
     wget \
     unzip \
     lua5.1 \
     luarocks \
+    curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Lua dependencies
+# Install .NET 6.0
+RUN wget https://packages.microsoft.com/config/debian/11/packages-microsoft-prod.deb -O packages-microsoft-prod.deb \
+    && dpkg -i packages-microsoft-prod.deb \
+    && rm packages-microsoft-prod.deb \
+    && apt-get update \
+    && apt-get install -y dotnet-sdk-6.0 \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN luarocks install luafilesystem || true
-RUN luarocks install argparse || true
 
 WORKDIR /app
 
-# Download Prometheus
+# Setup Prometheus
 RUN wget -q https://github.com/levno-710/Prometheus/archive/refs/heads/master.zip \
-    && unzip -q master.zip \
-    && rm master.zip
+    && unzip -q master.zip && rm master.zip \
+    && mv Prometheus-master prometheus
 
-# Verify installation
-RUN lua5.1 -v && ls -la /app/Prometheus-master/
+# Setup IronBrew
+RUN git clone https://github.com/IsEmil/IronBrew.git ironbrew || true
+RUN cd ironbrew && dotnet restore && dotnet build -c Release || echo "IronBrew build skipped"
 
-# Environment
-ENV PROMETHEUS_PATH=/app/Prometheus-master
+ENV PROMETHEUS_PATH=/app/prometheus
+ENV IRONBREW_PATH=/app/ironbrew
 
-# Install Node.js dependencies
 COPY package*.json ./
 RUN npm install --production
 
-# Copy bot
 COPY . .
 
 CMD ["node", "bot.js"]
