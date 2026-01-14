@@ -27,6 +27,12 @@ const PROMETHEUS_PATH = process.env.PROMETHEUS_PATH || '/app/prometheus';
 const JNKIE_API_KEY = process.env.JNKIE_API_KEY;
 const JNKIE_SERVICE_ID = '4532';
 
+// IDs yang ditemukan
+const KNOWN_IDS = {
+    integrations: ['2256', '2254'],
+    providers: ['2265', '2263']
+};
+
 if (!TOKEN) {
     console.error('TOKEN NOT FOUND');
     process.exit(1);
@@ -55,16 +61,16 @@ client.on('messageCreate', async (message) => {
         if (cmd === '!obf') await handleObfuscate(message);
         if (cmd === '!luraph') await handleLuraph(message);
         
-        // Explorer - BARU
-        if (cmd === '!crackluraph') await handleCrackLuraph(message);  // 🆕 Crack parameter
-        if (cmd === '!rawpost') await handleRawPost(message, args);    // 🆕 POST dengan body custom
-        if (cmd === '!probeluraph') await handleProbeLuraph(message);  // 🆕 Probe semua luraph endpoint
-        if (cmd === '!checkprovider') await handleCheckProvider(message); // 🆕 Check providers detail
-        if (cmd === '!checkintegration') await handleCheckIntegration(message); // 🆕 Check integrations
+        // Deep Explorer - untuk cari Luraph
+        if (cmd === '!deep') await handleDeepExplore(message);           // 🆕 Deep explore
+        if (cmd === '!detailprovider') await handleDetailProvider(message, args); // 🆕 Detail provider
+        if (cmd === '!detailintegration') await handleDetailIntegration(message, args); // 🆕 Detail integration
+        if (cmd === '!testobf') await handleTestObfuscate(message);      // 🆕 Test semua format obfuscate
+        if (cmd === '!services') await handleServicesDetail(message);     // 🆕 Detail /services/4532
         
         // Standard
         if (cmd === '!raw') await handleRaw(message, args);
-        if (cmd === '!probe') await handleProbe(message, args);
+        if (cmd === '!post') await handlePost(message, args);
         if (cmd === '!scan') await handleScan(message, args);
         if (cmd === '!debug') await handleDebug(message);
         if (cmd === '!help') await handleHelp(message);
@@ -76,206 +82,360 @@ client.on('messageCreate', async (message) => {
 });
 
 // ================================================================
-// 🔓 CRACK LURAPH - Cari parameter yang benar untuk endpoint Luraph
+// 🔍 DEEP EXPLORE - Explore semua untuk cari Luraph
 // ================================================================
-async function handleCrackLuraph(message) {
+async function handleDeepExplore(message) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
 
-    const statusMsg = await message.reply(`🔓 **Cracking Luraph endpoints...**\nMencari parameter yang benar...`);
+    const statusMsg = await message.reply(`🔍 **Deep Exploring API...**\nMencari endpoint Luraph/Obfuscate...`);
 
-    // Endpoint yang return 400
-    const endpoints = [
-        '/services/luraph',
-        '/services/obfuscate',
-        '/integrations/luraph',
-        '/providers/luraph'
+    let report = '';
+
+    // 1. Lihat detail service kita
+    await statusMsg.edit(`🔍 Step 1/5: Checking service ${JNKIE_SERVICE_ID}...`);
+    const serviceRes = await jnkieRequestRaw('GET', `/services/${JNKIE_SERVICE_ID}`);
+    
+    if (serviceRes.statusCode === 200) {
+        report += `**📦 Service ${JNKIE_SERVICE_ID}:**\n\`\`\`json\n${serviceRes.rawData?.substring(0, 500)}\n\`\`\`\n\n`;
+    }
+
+    // 2. Lihat detail provider
+    await statusMsg.edit(`🔍 Step 2/5: Checking providers...`);
+    for (const pid of KNOWN_IDS.providers) {
+        const res = await jnkieRequestRaw('GET', `/providers/${pid}`);
+        if (res.statusCode === 200) {
+            report += `**📦 Provider ${pid}:**\n\`\`\`json\n${res.rawData?.substring(0, 400)}\n\`\`\`\n`;
+        }
+        await new Promise(r => setTimeout(r, 500)); // Delay untuk hindari 429
+    }
+
+    // 3. Lihat detail integration
+    await statusMsg.edit(`🔍 Step 3/5: Checking integrations...`);
+    for (const iid of KNOWN_IDS.integrations) {
+        const res = await jnkieRequestRaw('GET', `/integrations/${iid}`);
+        if (res.statusCode === 200) {
+            report += `**🔗 Integration ${iid}:**\n\`\`\`json\n${res.rawData?.substring(0, 400)}\n\`\`\`\n`;
+        }
+        await new Promise(r => setTimeout(r, 500));
+    }
+
+    // 4. Cari endpoint obfuscate spesifik service
+    await statusMsg.edit(`🔍 Step 4/5: Finding obfuscate endpoints...`);
+    const obfEndpoints = [
+        `/services/${JNKIE_SERVICE_ID}/obfuscate`,
+        `/services/${JNKIE_SERVICE_ID}/luraph`,
+        `/services/${JNKIE_SERVICE_ID}/protect`,
+        `/services/${JNKIE_SERVICE_ID}/script`,
+        `/services/${JNKIE_SERVICE_ID}/scripts`,
+        `/services/${JNKIE_SERVICE_ID}/loader`,
+        `/obfuscate?serviceId=${JNKIE_SERVICE_ID}`,
+        `/luraph?serviceId=${JNKIE_SERVICE_ID}`,
     ];
 
-    // Semua kemungkinan parameter GET
-    const queryParams = [
-        `serviceId=${JNKIE_SERVICE_ID}`,
-        `service_id=${JNKIE_SERVICE_ID}`,
-        `id=${JNKIE_SERVICE_ID}`,
-        `service=${JNKIE_SERVICE_ID}`,
-        `providerId=luraph`,
-        `provider=luraph`,
-        `type=luraph`,
-        `integration=luraph`,
-        `integrationId=luraph`,
-        `name=luraph`,
-        // Kombinasi
-        `serviceId=${JNKIE_SERVICE_ID}&provider=luraph`,
-        `serviceId=${JNKIE_SERVICE_ID}&type=luraph`,
-        `id=${JNKIE_SERVICE_ID}&provider=luraph`,
-        // Limit/page
-        `limit=10`,
-        `page=1`,
-        `serviceId=${JNKIE_SERVICE_ID}&limit=10`,
+    report += `\n**🔧 Obfuscate Endpoints:**\n`;
+    for (const ep of obfEndpoints) {
+        const getRes = await jnkieRequestRaw('GET', ep);
+        const postRes = await jnkieRequestRaw('POST', ep, { script: 'print("test")' });
+        
+        const getIcon = getRes.statusCode === 200 ? '✅' : (getRes.statusCode === 400 ? '⚠️' : '❌');
+        const postIcon = postRes.statusCode === 200 ? '✅' : (postRes.statusCode === 400 ? '⚠️' : '❌');
+        
+        report += `${getIcon} GET / ${postIcon} POST \`${ep}\` (${getRes.statusCode}/${postRes.statusCode})\n`;
+        
+        await new Promise(r => setTimeout(r, 300));
+    }
+
+    // 5. Cek keys untuk tahu struktur
+    await statusMsg.edit(`🔍 Step 5/5: Checking keys structure...`);
+    const keysRes = await jnkieRequestRaw('GET', '/keys');
+    if (keysRes.statusCode === 200) {
+        report += `\n**🔑 Keys:**\n\`\`\`json\n${keysRes.rawData?.substring(0, 400)}\n\`\`\`\n`;
+    }
+
+    // Kirim report
+    // Split jika terlalu panjang
+    if (report.length > 4000) {
+        const file = new AttachmentBuilder(Buffer.from(report), { name: 'deep_explore_report.txt' });
+        await statusMsg.edit({ content: '🔍 **Deep Explore Complete!**\nReport terlalu panjang, lihat file:', files: [file] });
+    } else {
+        await statusMsg.edit({
+            embeds: [{
+                title: '🔍 Deep Explore Report',
+                description: report.substring(0, 4000),
+                color: 0x3498db,
+                footer: { text: 'Use !detailprovider [id] atau !detailintegration [id] untuk detail' }
+            }]
+        });
+    }
+}
+
+// ================================================================
+// 📦 DETAIL PROVIDER
+// ================================================================
+async function handleDetailProvider(message, args) {
+    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
+
+    const providerId = args[0] || KNOWN_IDS.providers[0];
+    const statusMsg = await message.reply(`📦 Fetching provider ${providerId}...`);
+
+    const res = await jnkieRequestRaw('GET', `/providers/${providerId}`);
+    
+    if (res.statusCode === 200) {
+        // Parse dan tampilkan semua field
+        try {
+            const data = JSON.parse(res.rawData);
+            const provider = data.data || data;
+            
+            let desc = `**Provider ID:** \`${providerId}\`\n\n`;
+            desc += '**All Fields:**\n```json\n';
+            desc += JSON.stringify(provider, null, 2).substring(0, 1500);
+            desc += '\n```\n';
+
+            // Test sub-endpoints
+            desc += '\n**Testing sub-endpoints:**\n';
+            const subEndpoints = [
+                `/providers/${providerId}/obfuscate`,
+                `/providers/${providerId}/luraph`,
+                `/providers/${providerId}/script`,
+                `/providers/${providerId}/execute`,
+            ];
+
+            for (const ep of subEndpoints) {
+                const subRes = await jnkieRequestRaw('GET', ep);
+                const postRes = await jnkieRequestRaw('POST', ep, { script: 'print("test")' });
+                desc += `• GET:${subRes.statusCode} POST:${postRes.statusCode} \`${ep}\`\n`;
+                await new Promise(r => setTimeout(r, 300));
+            }
+
+            await statusMsg.edit({
+                embeds: [{
+                    title: `📦 Provider: ${providerId}`,
+                    description: desc,
+                    color: 0x2ecc71
+                }]
+            });
+
+        } catch (e) {
+            await statusMsg.edit(`📦 **Provider ${providerId}:**\n\`\`\`json\n${res.rawData}\n\`\`\``);
+        }
+    } else {
+        await statusMsg.edit(`❌ Failed (${res.statusCode}): ${res.rawData?.substring(0, 500)}`);
+    }
+}
+
+// ================================================================
+// 🔗 DETAIL INTEGRATION
+// ================================================================
+async function handleDetailIntegration(message, args) {
+    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
+
+    const integrationId = args[0] || KNOWN_IDS.integrations[0];
+    const statusMsg = await message.reply(`🔗 Fetching integration ${integrationId}...`);
+
+    const res = await jnkieRequestRaw('GET', `/integrations/${integrationId}`);
+    
+    if (res.statusCode === 200) {
+        try {
+            const data = JSON.parse(res.rawData);
+            const integration = data.data || data;
+            
+            let desc = `**Integration ID:** \`${integrationId}\`\n\n`;
+            desc += '**All Fields:**\n```json\n';
+            desc += JSON.stringify(integration, null, 2).substring(0, 1500);
+            desc += '\n```\n';
+
+            // Test sub-endpoints
+            desc += '\n**Testing sub-endpoints:**\n';
+            const subEndpoints = [
+                `/integrations/${integrationId}/obfuscate`,
+                `/integrations/${integrationId}/luraph`,
+                `/integrations/${integrationId}/execute`,
+            ];
+
+            for (const ep of subEndpoints) {
+                const subRes = await jnkieRequestRaw('GET', ep);
+                const postRes = await jnkieRequestRaw('POST', ep, { script: 'print("test")' });
+                desc += `• GET:${subRes.statusCode} POST:${postRes.statusCode} \`${ep}\`\n`;
+                await new Promise(r => setTimeout(r, 300));
+            }
+
+            await statusMsg.edit({
+                embeds: [{
+                    title: `🔗 Integration: ${integrationId}`,
+                    description: desc,
+                    color: 0x9b59b6
+                }]
+            });
+
+        } catch (e) {
+            await statusMsg.edit(`🔗 **Integration ${integrationId}:**\n\`\`\`json\n${res.rawData}\n\`\`\``);
+        }
+    } else {
+        await statusMsg.edit(`❌ Failed (${res.statusCode}): ${res.rawData?.substring(0, 500)}`);
+    }
+}
+
+// ================================================================
+// 🧪 TEST OBFUSCATE - Test semua kemungkinan format
+// ================================================================
+async function handleTestObfuscate(message) {
+    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
+
+    const statusMsg = await message.reply(`🧪 **Testing all obfuscate formats...**`);
+
+    const testScript = 'print("hello world")';
+
+    // Semua kemungkinan endpoint dan body
+    const tests = [
+        // Dengan serviceId
+        { ep: '/services/obfuscate', body: { serviceId: JNKIE_SERVICE_ID, script: testScript } },
+        { ep: '/services/obfuscate', body: { service_id: JNKIE_SERVICE_ID, script: testScript } },
+        { ep: '/services/obfuscate', body: { serviceId: JNKIE_SERVICE_ID, code: testScript } },
+        { ep: '/services/obfuscate', body: { serviceId: JNKIE_SERVICE_ID, content: testScript } },
+        
+        // Dengan provider
+        { ep: '/services/obfuscate', body: { serviceId: JNKIE_SERVICE_ID, script: testScript, provider: 'luraph' } },
+        { ep: '/services/obfuscate', body: { serviceId: JNKIE_SERVICE_ID, script: testScript, type: 'luraph' } },
+        { ep: '/services/obfuscate', body: { serviceId: JNKIE_SERVICE_ID, script: testScript, providerId: KNOWN_IDS.providers[0] } },
+        
+        // Luraph endpoint
+        { ep: '/services/luraph', body: { serviceId: JNKIE_SERVICE_ID, script: testScript } },
+        { ep: '/services/luraph', body: { service_id: JNKIE_SERVICE_ID, script: testScript } },
+        
+        // Provider endpoint
+        { ep: `/providers/${KNOWN_IDS.providers[0]}/obfuscate`, body: { script: testScript } },
+        { ep: `/providers/${KNOWN_IDS.providers[0]}/execute`, body: { script: testScript } },
+        
+        // Integration endpoint  
+        { ep: `/integrations/${KNOWN_IDS.integrations[0]}/obfuscate`, body: { script: testScript } },
+        
+        // Service spesifik
+        { ep: `/services/${JNKIE_SERVICE_ID}/obfuscate`, body: { script: testScript } },
+        { ep: `/services/${JNKIE_SERVICE_ID}/luraph`, body: { script: testScript } },
+        { ep: `/services/${JNKIE_SERVICE_ID}/protect`, body: { script: testScript } },
+        { ep: `/services/${JNKIE_SERVICE_ID}/script`, body: { script: testScript } },
+        
+        // Root endpoints
+        { ep: '/obfuscate', body: { serviceId: JNKIE_SERVICE_ID, script: testScript } },
+        { ep: '/luraph', body: { serviceId: JNKIE_SERVICE_ID, script: testScript } },
+        { ep: '/protect', body: { serviceId: JNKIE_SERVICE_ID, script: testScript } },
+
+        // Nested data
+        { ep: '/services/obfuscate', body: { serviceId: JNKIE_SERVICE_ID, data: { script: testScript } } },
+        { ep: '/services/luraph', body: { data: { script: testScript, serviceId: JNKIE_SERVICE_ID } } },
     ];
 
     let results = [];
-    let found = [];
+    let success = [];
 
-    for (const ep of endpoints) {
-        await statusMsg.edit(`🔓 Testing: \`${ep}\`...`);
-
-        for (const param of queryParams) {
-            const fullPath = `${ep}?${param}`;
-            const res = await jnkieRequestRaw('GET', fullPath);
-            
-            if (res.statusCode === 200) {
-                found.push({ path: fullPath, data: res.rawData?.substring(0, 150) });
-            } else if (res.statusCode !== 400 && res.statusCode !== 404) {
-                results.push({ path: fullPath, status: res.statusCode });
-            }
-
-            await new Promise(r => setTimeout(r, 100));
+    for (let i = 0; i < tests.length; i++) {
+        const t = tests[i];
+        if (i % 5 === 0) {
+            await statusMsg.edit(`🧪 Testing... ${Math.round((i/tests.length)*100)}% (${success.length} found)`);
         }
+
+        const res = await jnkieRequestRaw('POST', t.ep, t.body);
+        
+        if (res.statusCode === 200) {
+            success.push({
+                endpoint: t.ep,
+                body: t.body,
+                response: res.rawData?.substring(0, 200)
+            });
+        } else if (res.statusCode !== 404 && res.statusCode !== 405) {
+            results.push({
+                endpoint: t.ep,
+                bodyKeys: Object.keys(t.body).join(', '),
+                status: res.statusCode,
+                error: res.rawData?.substring(0, 100)
+            });
+        }
+
+        await new Promise(r => setTimeout(r, 250));
     }
 
-    // Juga coba akses provider/integration detail dulu
-    await statusMsg.edit(`🔓 Checking providers & integrations details...`);
-    
-    // Lihat dulu isi /providers dan /integrations
-    const providersRes = await jnkieRequestRaw('GET', '/providers');
-    const integrationsRes = await jnkieRequestRaw('GET', '/integrations');
-
-    let extraInfo = '';
-    
-    if (providersRes.statusCode === 200) {
-        try {
-            const data = JSON.parse(providersRes.rawData);
-            const items = data.data || data.providers || data.items || data;
-            if (Array.isArray(items)) {
-                extraInfo += `\n**📦 Providers (${items.length}):**\n`;
-                items.slice(0, 10).forEach(p => {
-                    const id = p.id || p._id || p.providerId || 'N/A';
-                    const name = p.name || p.title || p.type || 'Unnamed';
-                    extraInfo += `• \`${id}\` - ${name}\n`;
-                });
-            }
-        } catch (e) {
-            extraInfo += `\n**Providers Raw:** ${providersRes.rawData?.substring(0, 200)}\n`;
-        }
-    }
-
-    if (integrationsRes.statusCode === 200) {
-        try {
-            const data = JSON.parse(integrationsRes.rawData);
-            const items = data.data || data.integrations || data.items || data;
-            if (Array.isArray(items)) {
-                extraInfo += `\n**🔗 Integrations (${items.length}):**\n`;
-                items.slice(0, 10).forEach(i => {
-                    const id = i.id || i._id || i.integrationId || 'N/A';
-                    const name = i.name || i.title || i.type || 'Unnamed';
-                    extraInfo += `• \`${id}\` - ${name}\n`;
-                });
-            }
-        } catch (e) {
-            extraInfo += `\n**Integrations Raw:** ${integrationsRes.rawData?.substring(0, 200)}\n`;
-        }
-    }
-
-    // Build result
+    // Build report
     let desc = '';
 
-    if (found.length > 0) {
-        desc += '**✅ BERHASIL DITEMUKAN:**\n';
-        found.forEach(f => {
-            desc += `• \`${f.path}\`\n`;
-            desc += `  └─ ${f.data}\n`;
+    if (success.length > 0) {
+        desc += '**✅ WORKING ENDPOINTS:**\n';
+        success.forEach(s => {
+            desc += `\n📌 \`POST ${s.endpoint}\`\n`;
+            desc += `Body: \`${JSON.stringify(s.body).substring(0, 100)}...\`\n`;
+            desc += `Response: ${s.response}\n`;
         });
-    }
-
-    if (results.length > 0) {
-        desc += '\n**⚠️ Status Lain:**\n';
-        results.forEach(r => {
-            desc += `• \`${r.path}\` (${r.status})\n`;
+    } else {
+        desc += '**❌ No working endpoint found**\n\n';
+        desc += '**⚠️ Status 400 (butuh parameter lain):**\n';
+        const status400 = results.filter(r => r.status === 400).slice(0, 10);
+        status400.forEach(r => {
+            desc += `• \`${r.endpoint}\` - ${r.error?.substring(0, 50)}\n`;
         });
-    }
 
-    desc += extraInfo;
-
-    if (found.length === 0 && desc === extraInfo) {
-        desc = `❌ Tidak menemukan parameter yang benar.\n\n${extraInfo}\n\n**Langkah selanjutnya:**\n• \`!checkprovider\` - Lihat detail providers\n• \`!checkintegration\` - Lihat detail integrations`;
+        desc += '\n**Other errors:**\n';
+        const others = results.filter(r => r.status !== 400).slice(0, 5);
+        others.forEach(r => {
+            desc += `• \`${r.endpoint}\` (${r.status})\n`;
+        });
     }
 
     await statusMsg.edit({
         embeds: [{
-            title: '🔓 Crack Luraph Results',
+            title: '🧪 Obfuscate Test Results',
             description: desc.substring(0, 4000),
-            color: found.length > 0 ? 0x2ecc71 : 0xf39c12,
-            footer: { text: 'Gunakan !checkprovider atau !checkintegration untuk detail' }
+            color: success.length > 0 ? 0x2ecc71 : 0xe74c3c,
+            footer: { text: `Tested: ${tests.length} | Success: ${success.length}` }
         }]
     });
 }
 
 // ================================================================
-// 📦 CHECK PROVIDER - Lihat detail semua providers
+// 📦 SERVICES DETAIL - Lihat detail service kita
 // ================================================================
-async function handleCheckProvider(message) {
+async function handleServicesDetail(message) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
 
-    const statusMsg = await message.reply(`📦 Fetching providers...`);
+    const statusMsg = await message.reply(`📦 Fetching service ${JNKIE_SERVICE_ID} details...`);
 
-    const res = await jnkieRequestRaw('GET', '/providers');
+    // Get service detail
+    const res = await jnkieRequestRaw('GET', `/services/${JNKIE_SERVICE_ID}`);
     
-    if (res.statusCode !== 200) {
-        return statusMsg.edit(`❌ Failed: ${res.statusCode}\n\`\`\`${res.rawData?.substring(0, 500)}\`\`\``);
-    }
-
     let desc = '';
-    let providerIds = [];
 
-    try {
-        const data = JSON.parse(res.rawData);
-        const items = data.data || data.providers || data.items || data.results || (Array.isArray(data) ? data : []);
-        
-        if (Array.isArray(items) && items.length > 0) {
-            desc += `**Found ${items.length} providers:**\n\n`;
+    if (res.statusCode === 200) {
+        desc += `**Service ${JNKIE_SERVICE_ID}:**\n\`\`\`json\n${res.rawData?.substring(0, 1200)}\n\`\`\`\n`;
+
+        // Parse untuk dapat field-field
+        try {
+            const data = JSON.parse(res.rawData);
+            const service = data.data || data;
+
+            // List semua available endpoints dari service
+            desc += '\n**Testing service sub-endpoints:**\n';
             
-            for (const p of items.slice(0, 15)) {
-                const id = p.id || p._id || p.providerId || 'N/A';
-                const name = p.name || p.title || p.type || 'Unnamed';
-                const type = p.type || p.provider || p.category || '';
-                
-                providerIds.push(id);
-                desc += `📦 **${name}**\n`;
-                desc += `   ID: \`${id}\`\n`;
-                desc += `   Type: ${type}\n`;
-                if (p.description) desc += `   Desc: ${p.description.substring(0, 50)}\n`;
-                desc += '\n';
+            const subPaths = [
+                'keys', 'scripts', 'loader', 'loaders', 'obfuscate', 'luraph',
+                'whitelist', 'blacklist', 'users', 'licenses', 'stats', 
+                'config', 'settings', 'webhooks', 'variables', 'logs'
+            ];
+
+            for (const sub of subPaths) {
+                const subRes = await jnkieRequestRaw('GET', `/services/${JNKIE_SERVICE_ID}/${sub}`);
+                const icon = subRes.statusCode === 200 ? '✅' : (subRes.statusCode === 400 ? '⚠️' : '❌');
+                desc += `${icon} \`/${sub}\` (${subRes.statusCode})\n`;
+                await new Promise(r => setTimeout(r, 200));
             }
 
-            // Coba akses detail provider pertama
-            if (providerIds[0] && providerIds[0] !== 'N/A') {
-                desc += `\n**🔍 Testing access patterns:**\n`;
-                
-                const testPaths = [
-                    `/providers/${providerIds[0]}`,
-                    `/providers?id=${providerIds[0]}`,
-                    `/services/obfuscate?providerId=${providerIds[0]}`,
-                    `/services/luraph?providerId=${providerIds[0]}`,
-                ];
-
-                for (const tp of testPaths) {
-                    const testRes = await jnkieRequestRaw('GET', tp);
-                    const icon = testRes.statusCode === 200 ? '✅' : (testRes.statusCode === 400 ? '⚠️' : '❌');
-                    desc += `${icon} \`${tp}\` (${testRes.statusCode})\n`;
-                    await new Promise(r => setTimeout(r, 100));
-                }
-            }
-
-        } else {
-            desc = `Empty or unexpected format:\n\`\`\`json\n${res.rawData?.substring(0, 1000)}\n\`\`\``;
+        } catch (e) {
+            desc += `\nParse error: ${e.message}`;
         }
-    } catch (e) {
-        desc = `Parse error:\n\`\`\`json\n${res.rawData?.substring(0, 1500)}\n\`\`\``;
+    } else {
+        desc = `❌ Failed (${res.statusCode}): ${res.rawData?.substring(0, 500)}`;
     }
 
     await statusMsg.edit({
         embeds: [{
-            title: '📦 Providers',
+            title: `📦 Service: ${JNKIE_SERVICE_ID}`,
             description: desc.substring(0, 4000),
             color: 0x3498db
         }]
@@ -283,208 +443,7 @@ async function handleCheckProvider(message) {
 }
 
 // ================================================================
-// 🔗 CHECK INTEGRATION - Lihat detail semua integrations
-// ================================================================
-async function handleCheckIntegration(message) {
-    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
-
-    const statusMsg = await message.reply(`🔗 Fetching integrations...`);
-
-    const res = await jnkieRequestRaw('GET', '/integrations');
-    
-    if (res.statusCode !== 200) {
-        return statusMsg.edit(`❌ Failed: ${res.statusCode}\n\`\`\`${res.rawData?.substring(0, 500)}\`\`\``);
-    }
-
-    let desc = '';
-    let integrationIds = [];
-
-    try {
-        const data = JSON.parse(res.rawData);
-        const items = data.data || data.integrations || data.items || data.results || (Array.isArray(data) ? data : []);
-        
-        if (Array.isArray(items) && items.length > 0) {
-            desc += `**Found ${items.length} integrations:**\n\n`;
-            
-            for (const i of items.slice(0, 15)) {
-                const id = i.id || i._id || i.integrationId || 'N/A';
-                const name = i.name || i.title || i.type || 'Unnamed';
-                const type = i.type || i.integration || i.provider || '';
-                
-                integrationIds.push(id);
-                desc += `🔗 **${name}**\n`;
-                desc += `   ID: \`${id}\`\n`;
-                desc += `   Type: ${type}\n`;
-                
-                // Tampilkan semua field untuk analisis
-                Object.keys(i).forEach(k => {
-                    if (!['id', '_id', 'name', 'title', 'type'].includes(k)) {
-                        const val = typeof i[k] === 'object' ? JSON.stringify(i[k]).substring(0, 50) : String(i[k]).substring(0, 50);
-                        desc += `   ${k}: ${val}\n`;
-                    }
-                });
-                desc += '\n';
-            }
-
-            // Test akses dengan integration ID
-            if (integrationIds[0] && integrationIds[0] !== 'N/A') {
-                desc += `\n**🔍 Testing access patterns:**\n`;
-                
-                const testPaths = [
-                    `/integrations/${integrationIds[0]}`,
-                    `/integrations?id=${integrationIds[0]}`,
-                    `/services/obfuscate?integrationId=${integrationIds[0]}`,
-                    `/services/luraph?integrationId=${integrationIds[0]}`,
-                ];
-
-                for (const tp of testPaths) {
-                    const testRes = await jnkieRequestRaw('GET', tp);
-                    const icon = testRes.statusCode === 200 ? '✅' : (testRes.statusCode === 400 ? '⚠️' : '❌');
-                    desc += `${icon} \`${tp}\` (${testRes.statusCode})\n`;
-                    await new Promise(r => setTimeout(r, 100));
-                }
-            }
-
-        } else {
-            desc = `Empty or unexpected format:\n\`\`\`json\n${res.rawData?.substring(0, 1000)}\n\`\`\``;
-        }
-    } catch (e) {
-        desc = `Parse error:\n\`\`\`json\n${res.rawData?.substring(0, 1500)}\n\`\`\``;
-    }
-
-    await statusMsg.edit({
-        embeds: [{
-            title: '🔗 Integrations',
-            description: desc.substring(0, 4000),
-            color: 0x9b59b6
-        }]
-    });
-}
-
-// ================================================================
-// 🔬 PROBE LURAPH - Probe semua endpoint luraph dengan POST body
-// ================================================================
-async function handleProbeLuraph(message) {
-    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
-
-    const statusMsg = await message.reply(`🔬 **Probing Luraph endpoints dengan POST...**`);
-
-    const endpoints = [
-        '/services/luraph',
-        '/services/obfuscate', 
-        '/integrations/luraph',
-        '/providers/luraph',
-        '/luraph',
-        '/obfuscate'
-    ];
-
-    const testScript = 'print("hello")';
-
-    // Berbagai format POST body
-    const bodies = [
-        { script: testScript },
-        { code: testScript },
-        { content: testScript },
-        { input: testScript },
-        { source: testScript },
-        { lua: testScript },
-        { script: testScript, serviceId: JNKIE_SERVICE_ID },
-        { script: testScript, service_id: JNKIE_SERVICE_ID },
-        { script: testScript, provider: 'luraph' },
-        { script: testScript, type: 'luraph' },
-        { data: { script: testScript } },
-        { data: { script: testScript, serviceId: JNKIE_SERVICE_ID } },
-    ];
-
-    let results = [];
-
-    for (const ep of endpoints) {
-        await statusMsg.edit(`🔬 Testing POST: \`${ep}\`...`);
-
-        for (const body of bodies) {
-            const res = await jnkieRequestRaw('POST', ep, body);
-            
-            // Cari yang bukan 404
-            if (res.statusCode !== 404) {
-                results.push({
-                    endpoint: ep,
-                    body: JSON.stringify(body).substring(0, 50),
-                    status: res.statusCode,
-                    response: res.rawData?.substring(0, 100)
-                });
-
-                // Jika 200, langsung break
-                if (res.statusCode === 200) break;
-            }
-
-            await new Promise(r => setTimeout(r, 100));
-        }
-    }
-
-    // Sort by status (200 first)
-    results.sort((a, b) => {
-        if (a.status === 200) return -1;
-        if (b.status === 200) return 1;
-        return a.status - b.status;
-    });
-
-    const desc = results.map(r => {
-        let icon = '❌';
-        if (r.status === 200) icon = '✅';
-        else if (r.status === 400) icon = '⚠️';
-        else if (r.status === 401) icon = '🔒';
-        else if (r.status === 405) icon = '✋';
-
-        return `${icon} **POST** \`${r.endpoint}\`\n   Body: \`${r.body}...\`\n   Status: ${r.status}\n   Response: ${r.response || 'N/A'}`;
-    }).join('\n\n');
-
-    const success = results.filter(r => r.status === 200);
-
-    await statusMsg.edit({
-        embeds: [{
-            title: '🔬 Probe Luraph POST Results',
-            description: desc.substring(0, 4000) || 'No results',
-            color: success.length > 0 ? 0x2ecc71 : 0xe74c3c,
-            footer: success.length > 0 
-                ? { text: `✅ Found ${success.length} working endpoint(s)!` }
-                : { text: 'No working POST found. Check !checkprovider and !checkintegration' }
-        }]
-    });
-}
-
-// ================================================================
-// 📤 RAW POST - POST dengan custom body
-// ================================================================
-async function handleRawPost(message, args) {
-    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
-
-    const endpoint = args[0] || '/services/luraph';
-    
-    // Parse body dari args: !rawpost /endpoint {"key":"value"}
-    let body = { serviceId: JNKIE_SERVICE_ID };
-    
-    const jsonArg = args.slice(1).join(' ');
-    if (jsonArg) {
-        try {
-            body = JSON.parse(jsonArg);
-        } catch (e) {
-            // Parse key=value format
-            args.slice(1).forEach(arg => {
-                const [k, v] = arg.split('=');
-                if (k && v) body[k] = v;
-            });
-        }
-    }
-
-    const statusMsg = await message.reply(`📤 POST \`${endpoint}\`\nBody: \`${JSON.stringify(body)}\``);
-
-    const res = await jnkieRequestRaw('POST', endpoint, body);
-    
-    await statusMsg.edit(`📤 **POST** \`${endpoint}\`\n**Status:** ${res.statusCode}\n**Body:** \`${JSON.stringify(body)}\`\n\`\`\`json\n${res.rawData?.substring(0, 1500) || 'Empty'}\n\`\`\``);
-}
-
-// ================================================================
-// 🔮 LURAPH - Obfuscate dengan Luraph
+// 🔮 LURAPH
 // ================================================================
 async function handleLuraph(message) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
@@ -493,70 +452,58 @@ async function handleLuraph(message) {
         return message.reply({
             embeds: [{
                 title: '🔮 Luraph Obfuscator',
-                description: 'Attach file .lua untuk di-obfuscate',
+                description: 'Attach file .lua untuk obfuscate',
                 color: 0x9b59b6,
                 fields: [
                     { name: 'Usage', value: '`!luraph` + attach file' },
-                    { name: 'Cari Endpoint', value: '`!crackluraph` - Cari parameter\n`!probeluraph` - Test POST\n`!checkprovider` - Lihat providers' }
+                    { name: 'Find Endpoint', value: '`!deep` - Deep explore\n`!testobf` - Test all formats\n`!services` - Service detail' }
                 ]
             }]
         });
     }
 
     const attachment = message.attachments.first();
-    const statusMsg = await message.reply(`🔮 **Processing Luraph...**\n📄 ${attachment.name}`);
+    const statusMsg = await message.reply(`🔮 **Luraph Processing...**\n📄 ${attachment.name}`);
 
     try {
         const scriptContent = await downloadFile(attachment.url);
         
-        // Endpoints untuk dicoba
+        // Semua kemungkinan endpoint
         const attempts = [
-            { path: '/services/luraph', body: { script: scriptContent, serviceId: JNKIE_SERVICE_ID } },
-            { path: '/services/obfuscate', body: { script: scriptContent, provider: 'luraph', serviceId: JNKIE_SERVICE_ID } },
-            { path: '/integrations/luraph', body: { script: scriptContent } },
-            { path: '/providers/luraph', body: { script: scriptContent } },
-            { path: '/luraph', body: { script: scriptContent } },
-            { path: '/obfuscate', body: { script: scriptContent, type: 'luraph' } },
+            { ep: '/services/obfuscate', body: { serviceId: JNKIE_SERVICE_ID, script: scriptContent, provider: 'luraph' } },
+            { ep: '/services/luraph', body: { serviceId: JNKIE_SERVICE_ID, script: scriptContent } },
+            { ep: `/services/${JNKIE_SERVICE_ID}/obfuscate`, body: { script: scriptContent } },
+            { ep: `/services/${JNKIE_SERVICE_ID}/luraph`, body: { script: scriptContent } },
+            { ep: `/providers/${KNOWN_IDS.providers[0]}/obfuscate`, body: { script: scriptContent } },
+            { ep: '/obfuscate', body: { serviceId: JNKIE_SERVICE_ID, script: scriptContent } },
+            { ep: '/luraph', body: { serviceId: JNKIE_SERVICE_ID, script: scriptContent } },
         ];
 
         let success = null;
 
-        for (const attempt of attempts) {
-            await statusMsg.edit(`🔮 Trying: \`${attempt.path}\`...`);
-            
-            const res = await jnkieRequestRaw('POST', attempt.path, attempt.body);
+        for (const a of attempts) {
+            await statusMsg.edit(`🔮 Trying: \`${a.ep}\`...`);
+            const res = await jnkieRequestRaw('POST', a.ep, a.body);
             
             if (res.statusCode === 200) {
-                success = { path: attempt.path, response: res.rawData };
+                success = { endpoint: a.ep, response: res.rawData };
                 break;
             }
-            
-            await new Promise(r => setTimeout(r, 200));
+            await new Promise(r => setTimeout(r, 300));
         }
 
         if (success) {
             let result = success.response;
-            
             try {
                 const json = JSON.parse(success.response);
                 result = json.script || json.result || json.output || json.data || json.code || json.obfuscated || success.response;
-                
-                // Jika result masih object
-                if (typeof result === 'object') {
-                    result = result.script || result.code || result.output || JSON.stringify(result);
-                }
+                if (typeof result === 'object') result = result.script || result.code || JSON.stringify(result);
             } catch (e) {}
 
-            const file = new AttachmentBuilder(Buffer.from(result), { 
-                name: `luraph_${attachment.name}` 
-            });
-
-            await statusMsg.edit({ 
-                content: `✅ **Luraph Success!**\nEndpoint: \`${success.path}\``, 
-                files: [file] 
-            });
+            const file = new AttachmentBuilder(Buffer.from(result), { name: `luraph_${attachment.name}` });
+            await statusMsg.edit({ content: `✅ **Luraph Success!**\nEndpoint: \`${success.endpoint}\``, files: [file] });
         } else {
-            await statusMsg.edit(`❌ **Luraph gagal.**\n\nJalankan:\n• \`!crackluraph\` - Cari parameter\n• \`!checkprovider\` - Lihat providers\n• \`!checkintegration\` - Lihat integrations`);
+            await statusMsg.edit(`❌ **Luraph tidak tersedia.**\n\nGunakan:\n• \`!obf\` untuk Prometheus\n• \`!testobf\` untuk test semua endpoint\n• \`!deep\` untuk explore API`);
         }
 
     } catch (err) {
@@ -574,24 +521,20 @@ async function handleRaw(message, args) {
     message.reply(`**GET** \`${endpoint}\` (${res.statusCode}):\n\`\`\`json\n${res.rawData?.substring(0, 1800) || 'Empty'}\n\`\`\``);
 }
 
-async function handleProbe(message, args) {
+async function handlePost(message, args) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
-    const endpoint = args[0] || '/services/luraph';
-    const statusMsg = await message.reply(`🔬 Probing \`${endpoint}\`...`);
-
-    const params = ['', `?serviceId=${JNKIE_SERVICE_ID}`, `?id=${JNKIE_SERVICE_ID}`, `?provider=luraph`];
-    let results = [];
-
-    for (const p of params) {
-        const res = await jnkieRequestRaw('GET', `${endpoint}${p}`);
-        results.push(`${res.statusCode === 200 ? '✅' : '❌'} GET \`${endpoint}${p}\` (${res.statusCode})`);
+    const endpoint = args[0] || '/services/obfuscate';
+    
+    let body = { serviceId: JNKIE_SERVICE_ID };
+    const jsonStr = args.slice(1).join(' ');
+    if (jsonStr) {
+        try { body = JSON.parse(jsonStr); } catch (e) {
+            args.slice(1).forEach(a => { const [k,v] = a.split('='); if(k&&v) body[k]=v; });
+        }
     }
 
-    // POST test
-    const postRes = await jnkieRequestRaw('POST', endpoint, { script: 'print("test")', serviceId: JNKIE_SERVICE_ID });
-    results.push(`${postRes.statusCode === 200 ? '✅' : '❌'} POST \`${endpoint}\` (${postRes.statusCode})`);
-
-    await statusMsg.edit({ embeds: [{ title: `🔬 Probe: ${endpoint}`, description: results.join('\n'), color: 0x3498db }] });
+    const res = await jnkieRequestRaw('POST', endpoint, body);
+    message.reply(`**POST** \`${endpoint}\` (${res.statusCode}):\nBody: \`${JSON.stringify(body).substring(0, 100)}\`\n\`\`\`json\n${res.rawData?.substring(0, 1500) || 'Empty'}\n\`\`\``);
 }
 
 async function handleScan(message, args) {
@@ -601,9 +544,8 @@ async function handleScan(message, args) {
     const endpoints = [
         '/services', '/keys', '/providers', '/integrations',
         `/services/${JNKIE_SERVICE_ID}`,
-        '/services/luraph', '/services/obfuscate',
-        '/integrations/luraph', '/providers/luraph',
-        '/luraph', '/obfuscate', '/scripts'
+        '/services/obfuscate', '/services/luraph',
+        '/obfuscate', '/luraph', '/scripts', '/protect'
     ];
 
     let results = [];
@@ -611,6 +553,7 @@ async function handleScan(message, args) {
         const res = await jnkieRequestRaw('GET', ep);
         const icon = res.statusCode === 200 ? '✅' : (res.statusCode === 400 ? '⚠️' : '❌');
         results.push(`${icon} \`${ep}\` (${res.statusCode})`);
+        await new Promise(r => setTimeout(r, 200));
     }
 
     await statusMsg.edit({ embeds: [{ title: '🕵️ Scan', description: results.join('\n'), color: 0x3498db }] });
@@ -618,17 +561,25 @@ async function handleScan(message, args) {
 
 async function handleDebug(message) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
-    const statusMsg = await message.reply(`🔍 Debug...`);
+    
+    const res1 = await jnkieRequestRaw('GET', '/services');
+    const res2 = await jnkieRequestRaw('GET', `/services/${JNKIE_SERVICE_ID}`);
+    const res3 = await jnkieRequestRaw('GET', '/providers');
+    const res4 = await jnkieRequestRaw('GET', '/integrations');
 
-    const tests = ['/services', '/providers', '/integrations', '/keys', `/services/${JNKIE_SERVICE_ID}`];
-    let results = [];
-
-    for (const t of tests) {
-        const res = await jnkieRequestRaw('GET', t);
-        results.push(`${res.statusCode === 200 ? '✅' : '❌'} \`${t}\` (${res.statusCode})`);
-    }
-
-    await statusMsg.edit({ embeds: [{ title: '🔍 Debug', description: results.join('\n'), color: 0x3498db }] });
+    message.reply({
+        embeds: [{
+            title: '🔍 Quick Debug',
+            description: [
+                `✅ /services (${res1.statusCode})`,
+                `✅ /services/${JNKIE_SERVICE_ID} (${res2.statusCode})`,
+                `✅ /providers (${res3.statusCode})`,
+                `✅ /integrations (${res4.statusCode})`
+            ].join('\n'),
+            color: 0x3498db,
+            footer: { text: '!deep untuk deep explore | !testobf untuk test obfuscate' }
+        }]
+    });
 }
 
 async function handleHelp(message) {
@@ -637,29 +588,17 @@ async function handleHelp(message) {
             title: '📖 Commands',
             color: 0x9b59b6,
             fields: [
-                { 
-                    name: '🔮 Obfuscator', 
-                    value: '`!obf` + file → Prometheus\n`!luraph` + file → Luraph via jnkie',
-                    inline: false 
-                },
-                { 
-                    name: '🔓 Crack Luraph', 
-                    value: '`!crackluraph` → Cari parameter\n`!probeluraph` → Test POST\n`!checkprovider` → Lihat providers\n`!checkintegration` → Lihat integrations',
-                    inline: false 
-                },
-                { 
-                    name: '🛠️ Explorer', 
-                    value: '`!raw [endpoint]` → GET\n`!rawpost [endpoint] [body]` → POST\n`!probe [endpoint]` → Test params\n`!scan` → Scan all',
-                    inline: false 
-                }
+                { name: '🔮 Obfuscator', value: '`!obf` + file → Prometheus\n`!luraph` + file → Luraph via jnkie', inline: false },
+                { name: '🔍 Deep Explorer', value: '`!deep` → Full API explore\n`!services` → Service detail\n`!testobf` → Test all obfuscate formats\n`!detailprovider [id]` → Provider detail\n`!detailintegration [id]` → Integration detail', inline: false },
+                { name: '🛠️ Standard', value: '`!raw [ep]` → GET\n`!post [ep] [body]` → POST\n`!scan` → Quick scan\n`!debug` → Debug', inline: false }
             ],
-            footer: { text: `Service ID: ${JNKIE_SERVICE_ID}` }
+            footer: { text: `Service: ${JNKIE_SERVICE_ID} | Providers: ${KNOWN_IDS.providers.join(', ')} | Integrations: ${KNOWN_IDS.integrations.join(', ')}` }
         }]
     });
 }
 
 function handleStatus(message) {
-    message.reply(`✅ Online | Service: \`${JNKIE_SERVICE_ID}\``);
+    message.reply(`✅ Online\n📦 Service: \`${JNKIE_SERVICE_ID}\`\n📦 Providers: ${KNOWN_IDS.providers.join(', ')}\n🔗 Integrations: ${KNOWN_IDS.integrations.join(', ')}`);
 }
 
 // ================================================================
