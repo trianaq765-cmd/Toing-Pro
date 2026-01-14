@@ -33,7 +33,6 @@ if (!TOKEN) {
 }
 
 const HEADER = `-- Protected with Prometheus [https://discord.gg/QarfX8ua2]\n\n`;
-
 const PRESETS = {
     minify: { value: 'Minify', emoji: '🟢' },
     weak: { value: 'Weak', emoji: '🔵' },
@@ -52,26 +51,24 @@ client.on('messageCreate', async (message) => {
     const cmd = content.split(/\s+/)[0].toLowerCase();
 
     try {
-        // Obfuscator Commands
+        // Obfuscator
         if (cmd === '!obf') await handleObfuscate(message);
-        if (cmd === '!luraph') await handleLuraph(message);           // 🆕 Luraph via jnkie
-        if (cmd === '!jnkieobf') await handleJnkieObfuscate(message); // 🆕 jnkie obfuscate
+        if (cmd === '!luraph') await handleLuraph(message);
         
-        // Explorer Commands  
-        if (cmd === '!findluraph') await handleFindLuraph(message);   // 🆕 Cari endpoint luraph
-        if (cmd === '!findscript') await handleFindScript(message);   // 🆕 Cari endpoint script
-        if (cmd === '!probe') await handleProbe(message, args);
+        // Explorer - BARU
+        if (cmd === '!crackluraph') await handleCrackLuraph(message);  // 🆕 Crack parameter
+        if (cmd === '!rawpost') await handleRawPost(message, args);    // 🆕 POST dengan body custom
+        if (cmd === '!probeluraph') await handleProbeLuraph(message);  // 🆕 Probe semua luraph endpoint
+        if (cmd === '!checkprovider') await handleCheckProvider(message); // 🆕 Check providers detail
+        if (cmd === '!checkintegration') await handleCheckIntegration(message); // 🆕 Check integrations
+        
+        // Standard
         if (cmd === '!raw') await handleRaw(message, args);
-        if (cmd === '!post') await handlePost(message, args);
+        if (cmd === '!probe') await handleProbe(message, args);
         if (cmd === '!scan') await handleScan(message, args);
         if (cmd === '!debug') await handleDebug(message);
-        
-        // Other
-        if (cmd === '!presets') await handlePresets(message);
-        if (cmd === '!status') await handleStatus(message);
         if (cmd === '!help') await handleHelp(message);
-        if (cmd === '!service') await handleService(message, args);
-        if (cmd === '!key') await handleKey(message, args);
+        if (cmd === '!status') await handleStatus(message);
     } catch (err) {
         console.error(err);
         message.reply(`❌ Error: ${err.message}`);
@@ -79,262 +76,458 @@ client.on('messageCreate', async (message) => {
 });
 
 // ================================================================
-// 🔍 FIND LURAPH - Cari semua endpoint terkait Luraph/Obfuscate
+// 🔓 CRACK LURAPH - Cari parameter yang benar untuk endpoint Luraph
 // ================================================================
-async function handleFindLuraph(message) {
+async function handleCrackLuraph(message) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
 
-    const statusMsg = await message.reply(`🔍 **Mencari endpoint Luraph/Obfuscate...**`);
+    const statusMsg = await message.reply(`🔓 **Cracking Luraph endpoints...**\nMencari parameter yang benar...`);
 
-    // Semua kemungkinan endpoint untuk obfuscate
+    // Endpoint yang return 400
     const endpoints = [
-        // Root level
-        '/luraph',
-        '/obfuscate',
-        '/obfuscator',
-        '/protect',
-        '/compile',
-        '/encrypt',
-        
-        // Dengan prefix
-        '/v1/luraph',
-        '/v1/obfuscate',
-        '/api/luraph',
-        '/api/obfuscate',
-        
-        // Services level
         '/services/luraph',
         '/services/obfuscate',
-        '/services/obfuscator',
-        '/services/protect',
-        
-        // Dengan Service ID
-        `/services/${JNKIE_SERVICE_ID}/luraph`,
-        `/services/${JNKIE_SERVICE_ID}/obfuscate`,
-        `/services/${JNKIE_SERVICE_ID}/protect`,
-        `/services/${JNKIE_SERVICE_ID}/script`,
-        `/services/${JNKIE_SERVICE_ID}/scripts`,
-        `/services/${JNKIE_SERVICE_ID}/compile`,
-        
-        // Integrations (mungkin luraph sebagai integration)
         '/integrations/luraph',
-        '/integrations/obfuscate',
-        
-        // Providers
-        '/providers/luraph',
-        '/providers/obfuscate',
-        
-        // Scripts related
-        '/scripts/obfuscate',
-        '/scripts/luraph',
-        '/script/obfuscate',
-        '/script/luraph',
-        
-        // Loader related
-        '/loader/obfuscate',
-        '/loaders/obfuscate',
-        
-        // Execute related
-        '/execute',
-        '/execute/luraph',
-        '/run/luraph'
+        '/providers/luraph'
     ];
 
-    let results = { found: [], maybe: [], notfound: [] };
-
-    for (let i = 0; i < endpoints.length; i++) {
-        const ep = endpoints[i];
-        if (i % 5 === 0) {
-            await statusMsg.edit(`🔍 Scanning... ${Math.round((i/endpoints.length)*100)}%`);
-        }
-
-        // Test GET
-        const getRes = await jnkieRequestRaw('GET', ep);
-        
-        // Test POST juga (obfuscate biasanya POST)
-        const postRes = await jnkieRequestRaw('POST', ep, { script: 'print("test")' });
-
-        if (getRes.statusCode === 200 || postRes.statusCode === 200) {
-            results.found.push({ 
-                ep, 
-                get: getRes.statusCode, 
-                post: postRes.statusCode,
-                data: getRes.rawData?.substring(0, 100) || postRes.rawData?.substring(0, 100)
-            });
-        } else if (getRes.statusCode === 400 || postRes.statusCode === 400 || 
-                   getRes.statusCode === 401 || postRes.statusCode === 401) {
-            results.maybe.push({ ep, get: getRes.statusCode, post: postRes.statusCode });
-        }
-
-        await new Promise(r => setTimeout(r, 150));
-    }
-
-    // Build result message
-    let desc = '';
-    
-    if (results.found.length > 0) {
-        desc += '**✅ DITEMUKAN (200):**\n';
-        desc += results.found.map(r => `• \`${r.ep}\` (GET:${r.get} POST:${r.post})`).join('\n');
-        desc += '\n\n';
-    }
-    
-    if (results.maybe.length > 0) {
-        desc += '**⚠️ MUNGKIN AKTIF (400/401):**\n';
-        desc += results.maybe.map(r => `• \`${r.ep}\` (GET:${r.get} POST:${r.post})`).join('\n');
-    }
-
-    if (results.found.length === 0 && results.maybe.length === 0) {
-        desc = '❌ Tidak ditemukan endpoint Luraph/Obfuscate standar.\n\nCoba:\n`!raw /integrations` untuk lihat integrasi\n`!raw /providers` untuk lihat provider';
-    }
-
-    await statusMsg.edit({
-        embeds: [{
-            title: '🔍 Luraph/Obfuscate Endpoints',
-            description: desc,
-            color: results.found.length > 0 ? 0x2ecc71 : 0xf39c12,
-            footer: { text: 'Use !probe [endpoint] untuk explore lebih lanjut' }
-        }]
-    });
-}
-
-// ================================================================
-// 🔍 FIND SCRIPT - Cari endpoint untuk manage script
-// ================================================================
-async function handleFindScript(message) {
-    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
-
-    const statusMsg = await message.reply(`🔍 **Mencari endpoint Script...**`);
-
-    const endpoints = [
-        // Root
-        '/scripts',
-        '/script',
-        '/files',
-        '/file',
-        '/uploads',
-        '/upload',
-        '/assets',
-        '/asset',
-        
-        // Dengan Service ID
-        `/services/${JNKIE_SERVICE_ID}/scripts`,
-        `/services/${JNKIE_SERVICE_ID}/script`,
-        `/services/${JNKIE_SERVICE_ID}/files`,
-        `/services/${JNKIE_SERVICE_ID}/file`,
-        `/services/${JNKIE_SERVICE_ID}/assets`,
-        `/services/${JNKIE_SERVICE_ID}/upload`,
-        `/services/${JNKIE_SERVICE_ID}/loader`,
-        `/services/${JNKIE_SERVICE_ID}/loaders`,
-        
-        // Query params
-        `/scripts?serviceId=${JNKIE_SERVICE_ID}`,
-        `/scripts?service_id=${JNKIE_SERVICE_ID}`,
-        `/scripts?id=${JNKIE_SERVICE_ID}`,
-        `/files?serviceId=${JNKIE_SERVICE_ID}`,
-        
-        // Services subpath dengan query
-        `/services/scripts?serviceId=${JNKIE_SERVICE_ID}`,
-        `/services/scripts?id=${JNKIE_SERVICE_ID}`,
-        `/services/files?serviceId=${JNKIE_SERVICE_ID}`,
+    // Semua kemungkinan parameter GET
+    const queryParams = [
+        `serviceId=${JNKIE_SERVICE_ID}`,
+        `service_id=${JNKIE_SERVICE_ID}`,
+        `id=${JNKIE_SERVICE_ID}`,
+        `service=${JNKIE_SERVICE_ID}`,
+        `providerId=luraph`,
+        `provider=luraph`,
+        `type=luraph`,
+        `integration=luraph`,
+        `integrationId=luraph`,
+        `name=luraph`,
+        // Kombinasi
+        `serviceId=${JNKIE_SERVICE_ID}&provider=luraph`,
+        `serviceId=${JNKIE_SERVICE_ID}&type=luraph`,
+        `id=${JNKIE_SERVICE_ID}&provider=luraph`,
+        // Limit/page
+        `limit=10`,
+        `page=1`,
+        `serviceId=${JNKIE_SERVICE_ID}&limit=10`,
     ];
 
-    let results = { found: [], maybe: [] };
+    let results = [];
+    let found = [];
 
-    for (let i = 0; i < endpoints.length; i++) {
-        const ep = endpoints[i];
-        if (i % 5 === 0) {
-            await statusMsg.edit(`🔍 Scanning... ${Math.round((i/endpoints.length)*100)}%`);
+    for (const ep of endpoints) {
+        await statusMsg.edit(`🔓 Testing: \`${ep}\`...`);
+
+        for (const param of queryParams) {
+            const fullPath = `${ep}?${param}`;
+            const res = await jnkieRequestRaw('GET', fullPath);
+            
+            if (res.statusCode === 200) {
+                found.push({ path: fullPath, data: res.rawData?.substring(0, 150) });
+            } else if (res.statusCode !== 400 && res.statusCode !== 404) {
+                results.push({ path: fullPath, status: res.statusCode });
+            }
+
+            await new Promise(r => setTimeout(r, 100));
         }
-
-        const getRes = await jnkieRequestRaw('GET', ep);
-        const postRes = await jnkieRequestRaw('POST', ep, { name: 'test' });
-
-        if (getRes.statusCode === 200 || postRes.statusCode === 200) {
-            results.found.push({ ep, get: getRes.statusCode, post: postRes.statusCode, data: getRes.rawData?.substring(0, 150) });
-        } else if (getRes.statusCode === 400 || postRes.statusCode === 400) {
-            results.maybe.push({ ep, get: getRes.statusCode, post: postRes.statusCode });
-        }
-
-        await new Promise(r => setTimeout(r, 150));
     }
 
-    let desc = '';
+    // Juga coba akses provider/integration detail dulu
+    await statusMsg.edit(`🔓 Checking providers & integrations details...`);
     
-    if (results.found.length > 0) {
-        desc += '**✅ DITEMUKAN:**\n';
-        results.found.forEach(r => {
-            desc += `• \`${r.ep}\` (GET:${r.get} POST:${r.post})\n`;
-            if (r.data) desc += `  └─ Preview: ${r.data.substring(0, 80)}...\n`;
+    // Lihat dulu isi /providers dan /integrations
+    const providersRes = await jnkieRequestRaw('GET', '/providers');
+    const integrationsRes = await jnkieRequestRaw('GET', '/integrations');
+
+    let extraInfo = '';
+    
+    if (providersRes.statusCode === 200) {
+        try {
+            const data = JSON.parse(providersRes.rawData);
+            const items = data.data || data.providers || data.items || data;
+            if (Array.isArray(items)) {
+                extraInfo += `\n**📦 Providers (${items.length}):**\n`;
+                items.slice(0, 10).forEach(p => {
+                    const id = p.id || p._id || p.providerId || 'N/A';
+                    const name = p.name || p.title || p.type || 'Unnamed';
+                    extraInfo += `• \`${id}\` - ${name}\n`;
+                });
+            }
+        } catch (e) {
+            extraInfo += `\n**Providers Raw:** ${providersRes.rawData?.substring(0, 200)}\n`;
+        }
+    }
+
+    if (integrationsRes.statusCode === 200) {
+        try {
+            const data = JSON.parse(integrationsRes.rawData);
+            const items = data.data || data.integrations || data.items || data;
+            if (Array.isArray(items)) {
+                extraInfo += `\n**🔗 Integrations (${items.length}):**\n`;
+                items.slice(0, 10).forEach(i => {
+                    const id = i.id || i._id || i.integrationId || 'N/A';
+                    const name = i.name || i.title || i.type || 'Unnamed';
+                    extraInfo += `• \`${id}\` - ${name}\n`;
+                });
+            }
+        } catch (e) {
+            extraInfo += `\n**Integrations Raw:** ${integrationsRes.rawData?.substring(0, 200)}\n`;
+        }
+    }
+
+    // Build result
+    let desc = '';
+
+    if (found.length > 0) {
+        desc += '**✅ BERHASIL DITEMUKAN:**\n';
+        found.forEach(f => {
+            desc += `• \`${f.path}\`\n`;
+            desc += `  └─ ${f.data}\n`;
         });
     }
-    
-    if (results.maybe.length > 0) {
-        desc += '\n**⚠️ BUTUH PARAMETER:**\n';
-        desc += results.maybe.map(r => `• \`${r.ep}\` (GET:${r.get} POST:${r.post})`).join('\n');
+
+    if (results.length > 0) {
+        desc += '\n**⚠️ Status Lain:**\n';
+        results.forEach(r => {
+            desc += `• \`${r.path}\` (${r.status})\n`;
+        });
     }
 
-    if (desc === '') desc = '❌ Tidak ditemukan endpoint script standar.';
+    desc += extraInfo;
+
+    if (found.length === 0 && desc === extraInfo) {
+        desc = `❌ Tidak menemukan parameter yang benar.\n\n${extraInfo}\n\n**Langkah selanjutnya:**\n• \`!checkprovider\` - Lihat detail providers\n• \`!checkintegration\` - Lihat detail integrations`;
+    }
 
     await statusMsg.edit({
         embeds: [{
-            title: '🔍 Script Endpoints',
-            description: desc,
-            color: results.found.length > 0 ? 0x2ecc71 : 0xf39c12
+            title: '🔓 Crack Luraph Results',
+            description: desc.substring(0, 4000),
+            color: found.length > 0 ? 0x2ecc71 : 0xf39c12,
+            footer: { text: 'Gunakan !checkprovider atau !checkintegration untuk detail' }
         }]
     });
 }
 
 // ================================================================
-// 🔮 LURAPH via jnkie API (jika endpoint ditemukan)
+// 📦 CHECK PROVIDER - Lihat detail semua providers
+// ================================================================
+async function handleCheckProvider(message) {
+    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
+
+    const statusMsg = await message.reply(`📦 Fetching providers...`);
+
+    const res = await jnkieRequestRaw('GET', '/providers');
+    
+    if (res.statusCode !== 200) {
+        return statusMsg.edit(`❌ Failed: ${res.statusCode}\n\`\`\`${res.rawData?.substring(0, 500)}\`\`\``);
+    }
+
+    let desc = '';
+    let providerIds = [];
+
+    try {
+        const data = JSON.parse(res.rawData);
+        const items = data.data || data.providers || data.items || data.results || (Array.isArray(data) ? data : []);
+        
+        if (Array.isArray(items) && items.length > 0) {
+            desc += `**Found ${items.length} providers:**\n\n`;
+            
+            for (const p of items.slice(0, 15)) {
+                const id = p.id || p._id || p.providerId || 'N/A';
+                const name = p.name || p.title || p.type || 'Unnamed';
+                const type = p.type || p.provider || p.category || '';
+                
+                providerIds.push(id);
+                desc += `📦 **${name}**\n`;
+                desc += `   ID: \`${id}\`\n`;
+                desc += `   Type: ${type}\n`;
+                if (p.description) desc += `   Desc: ${p.description.substring(0, 50)}\n`;
+                desc += '\n';
+            }
+
+            // Coba akses detail provider pertama
+            if (providerIds[0] && providerIds[0] !== 'N/A') {
+                desc += `\n**🔍 Testing access patterns:**\n`;
+                
+                const testPaths = [
+                    `/providers/${providerIds[0]}`,
+                    `/providers?id=${providerIds[0]}`,
+                    `/services/obfuscate?providerId=${providerIds[0]}`,
+                    `/services/luraph?providerId=${providerIds[0]}`,
+                ];
+
+                for (const tp of testPaths) {
+                    const testRes = await jnkieRequestRaw('GET', tp);
+                    const icon = testRes.statusCode === 200 ? '✅' : (testRes.statusCode === 400 ? '⚠️' : '❌');
+                    desc += `${icon} \`${tp}\` (${testRes.statusCode})\n`;
+                    await new Promise(r => setTimeout(r, 100));
+                }
+            }
+
+        } else {
+            desc = `Empty or unexpected format:\n\`\`\`json\n${res.rawData?.substring(0, 1000)}\n\`\`\``;
+        }
+    } catch (e) {
+        desc = `Parse error:\n\`\`\`json\n${res.rawData?.substring(0, 1500)}\n\`\`\``;
+    }
+
+    await statusMsg.edit({
+        embeds: [{
+            title: '📦 Providers',
+            description: desc.substring(0, 4000),
+            color: 0x3498db
+        }]
+    });
+}
+
+// ================================================================
+// 🔗 CHECK INTEGRATION - Lihat detail semua integrations
+// ================================================================
+async function handleCheckIntegration(message) {
+    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
+
+    const statusMsg = await message.reply(`🔗 Fetching integrations...`);
+
+    const res = await jnkieRequestRaw('GET', '/integrations');
+    
+    if (res.statusCode !== 200) {
+        return statusMsg.edit(`❌ Failed: ${res.statusCode}\n\`\`\`${res.rawData?.substring(0, 500)}\`\`\``);
+    }
+
+    let desc = '';
+    let integrationIds = [];
+
+    try {
+        const data = JSON.parse(res.rawData);
+        const items = data.data || data.integrations || data.items || data.results || (Array.isArray(data) ? data : []);
+        
+        if (Array.isArray(items) && items.length > 0) {
+            desc += `**Found ${items.length} integrations:**\n\n`;
+            
+            for (const i of items.slice(0, 15)) {
+                const id = i.id || i._id || i.integrationId || 'N/A';
+                const name = i.name || i.title || i.type || 'Unnamed';
+                const type = i.type || i.integration || i.provider || '';
+                
+                integrationIds.push(id);
+                desc += `🔗 **${name}**\n`;
+                desc += `   ID: \`${id}\`\n`;
+                desc += `   Type: ${type}\n`;
+                
+                // Tampilkan semua field untuk analisis
+                Object.keys(i).forEach(k => {
+                    if (!['id', '_id', 'name', 'title', 'type'].includes(k)) {
+                        const val = typeof i[k] === 'object' ? JSON.stringify(i[k]).substring(0, 50) : String(i[k]).substring(0, 50);
+                        desc += `   ${k}: ${val}\n`;
+                    }
+                });
+                desc += '\n';
+            }
+
+            // Test akses dengan integration ID
+            if (integrationIds[0] && integrationIds[0] !== 'N/A') {
+                desc += `\n**🔍 Testing access patterns:**\n`;
+                
+                const testPaths = [
+                    `/integrations/${integrationIds[0]}`,
+                    `/integrations?id=${integrationIds[0]}`,
+                    `/services/obfuscate?integrationId=${integrationIds[0]}`,
+                    `/services/luraph?integrationId=${integrationIds[0]}`,
+                ];
+
+                for (const tp of testPaths) {
+                    const testRes = await jnkieRequestRaw('GET', tp);
+                    const icon = testRes.statusCode === 200 ? '✅' : (testRes.statusCode === 400 ? '⚠️' : '❌');
+                    desc += `${icon} \`${tp}\` (${testRes.statusCode})\n`;
+                    await new Promise(r => setTimeout(r, 100));
+                }
+            }
+
+        } else {
+            desc = `Empty or unexpected format:\n\`\`\`json\n${res.rawData?.substring(0, 1000)}\n\`\`\``;
+        }
+    } catch (e) {
+        desc = `Parse error:\n\`\`\`json\n${res.rawData?.substring(0, 1500)}\n\`\`\``;
+    }
+
+    await statusMsg.edit({
+        embeds: [{
+            title: '🔗 Integrations',
+            description: desc.substring(0, 4000),
+            color: 0x9b59b6
+        }]
+    });
+}
+
+// ================================================================
+// 🔬 PROBE LURAPH - Probe semua endpoint luraph dengan POST body
+// ================================================================
+async function handleProbeLuraph(message) {
+    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
+
+    const statusMsg = await message.reply(`🔬 **Probing Luraph endpoints dengan POST...**`);
+
+    const endpoints = [
+        '/services/luraph',
+        '/services/obfuscate', 
+        '/integrations/luraph',
+        '/providers/luraph',
+        '/luraph',
+        '/obfuscate'
+    ];
+
+    const testScript = 'print("hello")';
+
+    // Berbagai format POST body
+    const bodies = [
+        { script: testScript },
+        { code: testScript },
+        { content: testScript },
+        { input: testScript },
+        { source: testScript },
+        { lua: testScript },
+        { script: testScript, serviceId: JNKIE_SERVICE_ID },
+        { script: testScript, service_id: JNKIE_SERVICE_ID },
+        { script: testScript, provider: 'luraph' },
+        { script: testScript, type: 'luraph' },
+        { data: { script: testScript } },
+        { data: { script: testScript, serviceId: JNKIE_SERVICE_ID } },
+    ];
+
+    let results = [];
+
+    for (const ep of endpoints) {
+        await statusMsg.edit(`🔬 Testing POST: \`${ep}\`...`);
+
+        for (const body of bodies) {
+            const res = await jnkieRequestRaw('POST', ep, body);
+            
+            // Cari yang bukan 404
+            if (res.statusCode !== 404) {
+                results.push({
+                    endpoint: ep,
+                    body: JSON.stringify(body).substring(0, 50),
+                    status: res.statusCode,
+                    response: res.rawData?.substring(0, 100)
+                });
+
+                // Jika 200, langsung break
+                if (res.statusCode === 200) break;
+            }
+
+            await new Promise(r => setTimeout(r, 100));
+        }
+    }
+
+    // Sort by status (200 first)
+    results.sort((a, b) => {
+        if (a.status === 200) return -1;
+        if (b.status === 200) return 1;
+        return a.status - b.status;
+    });
+
+    const desc = results.map(r => {
+        let icon = '❌';
+        if (r.status === 200) icon = '✅';
+        else if (r.status === 400) icon = '⚠️';
+        else if (r.status === 401) icon = '🔒';
+        else if (r.status === 405) icon = '✋';
+
+        return `${icon} **POST** \`${r.endpoint}\`\n   Body: \`${r.body}...\`\n   Status: ${r.status}\n   Response: ${r.response || 'N/A'}`;
+    }).join('\n\n');
+
+    const success = results.filter(r => r.status === 200);
+
+    await statusMsg.edit({
+        embeds: [{
+            title: '🔬 Probe Luraph POST Results',
+            description: desc.substring(0, 4000) || 'No results',
+            color: success.length > 0 ? 0x2ecc71 : 0xe74c3c,
+            footer: success.length > 0 
+                ? { text: `✅ Found ${success.length} working endpoint(s)!` }
+                : { text: 'No working POST found. Check !checkprovider and !checkintegration' }
+        }]
+    });
+}
+
+// ================================================================
+// 📤 RAW POST - POST dengan custom body
+// ================================================================
+async function handleRawPost(message, args) {
+    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
+
+    const endpoint = args[0] || '/services/luraph';
+    
+    // Parse body dari args: !rawpost /endpoint {"key":"value"}
+    let body = { serviceId: JNKIE_SERVICE_ID };
+    
+    const jsonArg = args.slice(1).join(' ');
+    if (jsonArg) {
+        try {
+            body = JSON.parse(jsonArg);
+        } catch (e) {
+            // Parse key=value format
+            args.slice(1).forEach(arg => {
+                const [k, v] = arg.split('=');
+                if (k && v) body[k] = v;
+            });
+        }
+    }
+
+    const statusMsg = await message.reply(`📤 POST \`${endpoint}\`\nBody: \`${JSON.stringify(body)}\``);
+
+    const res = await jnkieRequestRaw('POST', endpoint, body);
+    
+    await statusMsg.edit(`📤 **POST** \`${endpoint}\`\n**Status:** ${res.statusCode}\n**Body:** \`${JSON.stringify(body)}\`\n\`\`\`json\n${res.rawData?.substring(0, 1500) || 'Empty'}\n\`\`\``);
+}
+
+// ================================================================
+// 🔮 LURAPH - Obfuscate dengan Luraph
 // ================================================================
 async function handleLuraph(message) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
     
-    // Cek apakah ada file attachment
-    const hasFile = message.attachments.size > 0;
-    
-    if (!hasFile) {
+    if (message.attachments.size === 0) {
         return message.reply({
             embeds: [{
                 title: '🔮 Luraph Obfuscator',
-                description: 'Upload file Lua untuk di-obfuscate dengan Luraph via jnkie API.',
+                description: 'Attach file .lua untuk di-obfuscate',
                 color: 0x9b59b6,
                 fields: [
-                    { name: 'Usage', value: '`!luraph` + attach file .lua' },
-                    { name: 'Status', value: 'Mencari endpoint...' }
+                    { name: 'Usage', value: '`!luraph` + attach file' },
+                    { name: 'Cari Endpoint', value: '`!crackluraph` - Cari parameter\n`!probeluraph` - Test POST\n`!checkprovider` - Lihat providers' }
                 ]
             }]
         });
     }
 
     const attachment = message.attachments.first();
-    const statusMsg = await message.reply(`🔮 **Luraph Obfuscating...**\n📄 File: ${attachment.name}`);
+    const statusMsg = await message.reply(`🔮 **Processing Luraph...**\n📄 ${attachment.name}`);
 
     try {
-        // Download script
         const scriptContent = await downloadFile(attachment.url);
         
-        // Coba berbagai endpoint obfuscate
-        const possibleEndpoints = [
-            { path: '/luraph', method: 'POST', body: { script: scriptContent } },
-            { path: '/obfuscate', method: 'POST', body: { script: scriptContent, provider: 'luraph' } },
-            { path: '/services/luraph', method: 'POST', body: { script: scriptContent } },
-            { path: '/services/obfuscate', method: 'POST', body: { script: scriptContent, type: 'luraph' } },
-            { path: `/services/${JNKIE_SERVICE_ID}/obfuscate`, method: 'POST', body: { script: scriptContent } },
-            { path: '/integrations/luraph', method: 'POST', body: { script: scriptContent } },
-            { path: '/providers/luraph', method: 'POST', body: { script: scriptContent } },
-            { path: '/execute', method: 'POST', body: { script: scriptContent, action: 'obfuscate' } },
+        // Endpoints untuk dicoba
+        const attempts = [
+            { path: '/services/luraph', body: { script: scriptContent, serviceId: JNKIE_SERVICE_ID } },
+            { path: '/services/obfuscate', body: { script: scriptContent, provider: 'luraph', serviceId: JNKIE_SERVICE_ID } },
+            { path: '/integrations/luraph', body: { script: scriptContent } },
+            { path: '/providers/luraph', body: { script: scriptContent } },
+            { path: '/luraph', body: { script: scriptContent } },
+            { path: '/obfuscate', body: { script: scriptContent, type: 'luraph' } },
         ];
 
         let success = null;
 
-        for (const ep of possibleEndpoints) {
-            await statusMsg.edit(`🔮 Trying: \`${ep.path}\`...`);
+        for (const attempt of attempts) {
+            await statusMsg.edit(`🔮 Trying: \`${attempt.path}\`...`);
             
-            const res = await jnkieRequestRaw(ep.method, ep.path, ep.body);
+            const res = await jnkieRequestRaw('POST', attempt.path, attempt.body);
             
             if (res.statusCode === 200) {
-                success = { endpoint: ep.path, response: res.rawData };
+                success = { path: attempt.path, response: res.rawData };
                 break;
             }
             
@@ -342,24 +535,28 @@ async function handleLuraph(message) {
         }
 
         if (success) {
-            // Parse response untuk dapat hasil obfuscate
             let result = success.response;
+            
             try {
                 const json = JSON.parse(success.response);
-                result = json.script || json.result || json.output || json.data || json.code || success.response;
+                result = json.script || json.result || json.output || json.data || json.code || json.obfuscated || success.response;
+                
+                // Jika result masih object
+                if (typeof result === 'object') {
+                    result = result.script || result.code || result.output || JSON.stringify(result);
+                }
             } catch (e) {}
 
-            // Kirim sebagai file
             const file = new AttachmentBuilder(Buffer.from(result), { 
                 name: `luraph_${attachment.name}` 
             });
 
             await statusMsg.edit({ 
-                content: `✅ **Luraph Success!**\nEndpoint: \`${success.endpoint}\``, 
+                content: `✅ **Luraph Success!**\nEndpoint: \`${success.path}\``, 
                 files: [file] 
             });
         } else {
-            await statusMsg.edit(`❌ **Tidak dapat menemukan endpoint Luraph yang aktif.**\n\nJalankan \`!findluraph\` untuk scan endpoint.`);
+            await statusMsg.edit(`❌ **Luraph gagal.**\n\nJalankan:\n• \`!crackluraph\` - Cari parameter\n• \`!checkprovider\` - Lihat providers\n• \`!checkintegration\` - Lihat integrations`);
         }
 
     } catch (err) {
@@ -368,124 +565,7 @@ async function handleLuraph(message) {
 }
 
 // ================================================================
-// 🛡️ JNKIE OBFUSCATE (generic)
-// ================================================================
-async function handleJnkieObfuscate(message) {
-    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
-    if (message.attachments.size === 0) return message.reply('❌ Attach file .lua');
-
-    const attachment = message.attachments.first();
-    const statusMsg = await message.reply(`🛡️ **jnkie Obfuscating...**\n📄 File: ${attachment.name}`);
-
-    try {
-        const scriptContent = await downloadFile(attachment.url);
-        
-        // Test semua endpoint obfuscate
-        const endpoints = [
-            { path: '/obfuscate', body: { script: scriptContent } },
-            { path: '/services/obfuscate', body: { script: scriptContent, serviceId: JNKIE_SERVICE_ID } },
-            { path: `/services/${JNKIE_SERVICE_ID}/obfuscate`, body: { script: scriptContent } },
-            { path: '/protect', body: { script: scriptContent } },
-            { path: '/compile', body: { script: scriptContent } },
-        ];
-
-        let success = null;
-
-        for (const ep of endpoints) {
-            await statusMsg.edit(`🛡️ Trying: \`${ep.path}\`...`);
-            const res = await jnkieRequestRaw('POST', ep.path, ep.body);
-            
-            if (res.statusCode === 200) {
-                success = { endpoint: ep.path, response: res.rawData };
-                break;
-            }
-            await new Promise(r => setTimeout(r, 200));
-        }
-
-        if (success) {
-            let result = success.response;
-            try {
-                const json = JSON.parse(success.response);
-                result = json.script || json.result || json.output || json.data || success.response;
-            } catch (e) {}
-
-            const file = new AttachmentBuilder(Buffer.from(result), { 
-                name: `jnkie_${attachment.name}` 
-            });
-
-            await statusMsg.edit({ 
-                content: `✅ **jnkie Obfuscate Success!**\nEndpoint: \`${success.endpoint}\``, 
-                files: [file] 
-            });
-        } else {
-            await statusMsg.edit(`❌ Tidak ditemukan endpoint obfuscate aktif.\n\nGunakan:\n• \`!obf\` untuk Prometheus\n• \`!findluraph\` untuk scan endpoint`);
-        }
-
-    } catch (err) {
-        await statusMsg.edit(`❌ Error: ${err.message}`);
-    }
-}
-
-// ================================================================
-// 🔬 PROBE - Test endpoint dengan parameter
-// ================================================================
-async function handleProbe(message, args) {
-    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
-
-    const endpoint = args[0] || '/services/scripts';
-    const statusMsg = await message.reply(`🔬 Probing \`${endpoint}\`...`);
-
-    const params = [
-        '',
-        `?serviceId=${JNKIE_SERVICE_ID}`,
-        `?service_id=${JNKIE_SERVICE_ID}`,
-        `?id=${JNKIE_SERVICE_ID}`,
-        `?service=${JNKIE_SERVICE_ID}`,
-    ];
-
-    let results = [];
-
-    // Test GET dengan params
-    for (const p of params) {
-        const res = await jnkieRequestRaw('GET', `${endpoint}${p}`);
-        results.push({ method: 'GET', path: `${endpoint}${p}`, status: res.statusCode });
-        await new Promise(r => setTimeout(r, 100));
-    }
-
-    // Test POST
-    const postBodies = [
-        { serviceId: JNKIE_SERVICE_ID },
-        { service_id: JNKIE_SERVICE_ID },
-        { id: JNKIE_SERVICE_ID },
-        { script: 'print("test")' },
-        { script: 'print("test")', serviceId: JNKIE_SERVICE_ID },
-    ];
-
-    for (const body of postBodies) {
-        const res = await jnkieRequestRaw('POST', endpoint, body);
-        results.push({ method: 'POST', path: endpoint, body: JSON.stringify(body).substring(0, 30), status: res.statusCode });
-        await new Promise(r => setTimeout(r, 100));
-    }
-
-    const list = results.map(r => {
-        const icon = r.status === 200 ? '✅' : (r.status === 400 ? '⚠️' : '❌');
-        return `${icon} ${r.method} \`${r.path}\` ${r.body || ''} (${r.status})`;
-    }).join('\n');
-
-    const success = results.filter(r => r.status === 200);
-
-    await statusMsg.edit({
-        embeds: [{
-            title: `🔬 Probe: ${endpoint}`,
-            description: list,
-            color: success.length > 0 ? 0x2ecc71 : 0xe74c3c,
-            footer: success.length > 0 ? { text: `✅ Found ${success.length} working!` } : { text: 'No working params found' }
-        }]
-    });
-}
-
-// ================================================================
-// RAW, SCAN, DEBUG, dll
+// STANDARD HANDLERS
 // ================================================================
 async function handleRaw(message, args) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
@@ -494,80 +574,96 @@ async function handleRaw(message, args) {
     message.reply(`**GET** \`${endpoint}\` (${res.statusCode}):\n\`\`\`json\n${res.rawData?.substring(0, 1800) || 'Empty'}\n\`\`\``);
 }
 
-async function handlePost(message, args) {
+async function handleProbe(message, args) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
-    const endpoint = args[0] || '/services';
-    let body = { serviceId: JNKIE_SERVICE_ID };
-    args.slice(1).forEach(arg => {
-        const [k, v] = arg.split('=');
-        if (k && v) body[k] = v;
-    });
-    const res = await jnkieRequestRaw('POST', endpoint, body);
-    message.reply(`**POST** \`${endpoint}\` (${res.statusCode}):\nBody: \`${JSON.stringify(body)}\`\n\`\`\`json\n${res.rawData?.substring(0, 1500) || 'Empty'}\n\`\`\``);
+    const endpoint = args[0] || '/services/luraph';
+    const statusMsg = await message.reply(`🔬 Probing \`${endpoint}\`...`);
+
+    const params = ['', `?serviceId=${JNKIE_SERVICE_ID}`, `?id=${JNKIE_SERVICE_ID}`, `?provider=luraph`];
+    let results = [];
+
+    for (const p of params) {
+        const res = await jnkieRequestRaw('GET', `${endpoint}${p}`);
+        results.push(`${res.statusCode === 200 ? '✅' : '❌'} GET \`${endpoint}${p}\` (${res.statusCode})`);
+    }
+
+    // POST test
+    const postRes = await jnkieRequestRaw('POST', endpoint, { script: 'print("test")', serviceId: JNKIE_SERVICE_ID });
+    results.push(`${postRes.statusCode === 200 ? '✅' : '❌'} POST \`${endpoint}\` (${postRes.statusCode})`);
+
+    await statusMsg.edit({ embeds: [{ title: `🔬 Probe: ${endpoint}`, description: results.join('\n'), color: 0x3498db }] });
 }
 
 async function handleScan(message, args) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
-    const filter = args[0]?.toLowerCase();
     const statusMsg = await message.reply(`🕵️ Scanning...`);
 
-    const bases = ['/services', '/keys', '/providers', '/integrations', '/scripts', '/obfuscate', '/luraph', `/services/${JNKIE_SERVICE_ID}`];
-    const subs = ['', '/list', '/all', '/create', '/scripts', '/keys', '/obfuscate', '/luraph', '/protect', '/execute'];
+    const endpoints = [
+        '/services', '/keys', '/providers', '/integrations',
+        `/services/${JNKIE_SERVICE_ID}`,
+        '/services/luraph', '/services/obfuscate',
+        '/integrations/luraph', '/providers/luraph',
+        '/luraph', '/obfuscate', '/scripts'
+    ];
 
-    let targets = [];
-    bases.forEach(b => subs.forEach(s => targets.push(`${b}${s}`)));
-    if (filter) targets = targets.filter(t => t.includes(filter));
-    targets = [...new Set(targets)];
-
-    let found = [];
-    for (let i = 0; i < targets.length; i += 10) {
-        const batch = targets.slice(i, i + 10);
-        await statusMsg.edit(`🕵️ ${Math.round((i/targets.length)*100)}%`);
-        const results = await Promise.all(batch.map(p => jnkieRequestRaw('GET', p).then(r => ({ path: p, status: r.statusCode }))));
-        results.forEach(r => { if (r.status !== 404) found.push(r); });
-        await new Promise(r => setTimeout(r, 250));
+    let results = [];
+    for (const ep of endpoints) {
+        const res = await jnkieRequestRaw('GET', ep);
+        const icon = res.statusCode === 200 ? '✅' : (res.statusCode === 400 ? '⚠️' : '❌');
+        results.push(`${icon} \`${ep}\` (${res.statusCode})`);
     }
 
-    found.sort((a, b) => a.status - b.status);
-    const list = found.map(f => `${f.status === 200 ? '✅' : '⚠️'} \`${f.path}\` (${f.status})`).join('\n');
-
-    await statusMsg.edit({
-        embeds: [{
-            title: '🕵️ Scan Results',
-            description: list || 'No results',
-            color: 0x3498db
-        }]
-    });
+    await statusMsg.edit({ embeds: [{ title: '🕵️ Scan', description: results.join('\n'), color: 0x3498db }] });
 }
 
 async function handleDebug(message) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
     const statusMsg = await message.reply(`🔍 Debug...`);
-    
-    const tests = [
-        '/services', '/keys', '/providers', '/integrations',
-        '/luraph', '/obfuscate', '/scripts',
-        `/services/${JNKIE_SERVICE_ID}`,
-    ];
 
+    const tests = ['/services', '/providers', '/integrations', '/keys', `/services/${JNKIE_SERVICE_ID}`];
     let results = [];
+
     for (const t of tests) {
         const res = await jnkieRequestRaw('GET', t);
         results.push(`${res.statusCode === 200 ? '✅' : '❌'} \`${t}\` (${res.statusCode})`);
     }
 
-    await statusMsg.edit({
+    await statusMsg.edit({ embeds: [{ title: '🔍 Debug', description: results.join('\n'), color: 0x3498db }] });
+}
+
+async function handleHelp(message) {
+    message.reply({
         embeds: [{
-            title: '🔍 Debug',
-            description: results.join('\n'),
-            color: 0x3498db,
-            footer: { text: '!findluraph untuk cari Luraph | !findscript untuk cari Script' }
+            title: '📖 Commands',
+            color: 0x9b59b6,
+            fields: [
+                { 
+                    name: '🔮 Obfuscator', 
+                    value: '`!obf` + file → Prometheus\n`!luraph` + file → Luraph via jnkie',
+                    inline: false 
+                },
+                { 
+                    name: '🔓 Crack Luraph', 
+                    value: '`!crackluraph` → Cari parameter\n`!probeluraph` → Test POST\n`!checkprovider` → Lihat providers\n`!checkintegration` → Lihat integrations',
+                    inline: false 
+                },
+                { 
+                    name: '🛠️ Explorer', 
+                    value: '`!raw [endpoint]` → GET\n`!rawpost [endpoint] [body]` → POST\n`!probe [endpoint]` → Test params\n`!scan` → Scan all',
+                    inline: false 
+                }
+            ],
+            footer: { text: `Service ID: ${JNKIE_SERVICE_ID}` }
         }]
     });
 }
 
+function handleStatus(message) {
+    message.reply(`✅ Online | Service: \`${JNKIE_SERVICE_ID}\``);
+}
+
 // ================================================================
-// PROMETHEUS OBFUSCATE (Local)
+// PROMETHEUS
 // ================================================================
 async function handleObfuscate(message) {
     if (message.attachments.size === 0) return message.reply('❌ Attach file');
@@ -584,7 +680,6 @@ async function handleObfuscate(message) {
         fs.writeFileSync(inputPath, luaCode.replace(/^\uFEFF/, '').trim(), 'utf8');
         
         const msg = await message.reply(`🔄 Prometheus ${preset.emoji}...`);
-        
         await execAsync(`cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset ${preset.value} "${inputPath}" --out "${outputPath}" 2>&1`, { timeout: 120000 });
 
         if (fs.existsSync(outputPath)) {
@@ -602,66 +697,7 @@ async function handleObfuscate(message) {
 }
 
 // ================================================================
-// HANDLERS
-// ================================================================
-async function handleService(message, args) {
-    if (!args[0] || args[0] === 'list') {
-        const res = await jnkieRequestRaw('GET', '/services');
-        return message.reply(`**Services (${res.statusCode}):**\n\`\`\`json\n${res.rawData?.substring(0, 1800) || 'Empty'}\n\`\`\``);
-    }
-    message.reply('Usage: `!service list`');
-}
-
-async function handleKey(message, args) {
-    if (!args[0] || args[0] === 'list') {
-        const res = await jnkieRequestRaw('GET', '/keys');
-        return message.reply(`**Keys (${res.statusCode}):**\n\`\`\`json\n${res.rawData?.substring(0, 1800) || 'Empty'}\n\`\`\``);
-    }
-    message.reply('Usage: `!key list`');
-}
-
-async function handleHelp(message) {
-    message.reply({
-        embeds: [{
-            title: '📖 Bot Commands',
-            color: 0x9b59b6,
-            fields: [
-                { 
-                    name: '🔮 Obfuscator', 
-                    value: '`!obf [preset]` + file → Prometheus\n`!luraph` + file → Luraph via jnkie\n`!jnkieobf` + file → jnkie obfuscate',
-                    inline: false 
-                },
-                { 
-                    name: '🔍 Endpoint Finder', 
-                    value: '`!findluraph` → Cari endpoint Luraph\n`!findscript` → Cari endpoint Script\n`!probe [endpoint]` → Test parameter',
-                    inline: false 
-                },
-                { 
-                    name: '🛠️ Explorer', 
-                    value: '`!raw [endpoint]` → GET request\n`!post [endpoint]` → POST request\n`!scan` → Scan semua\n`!debug` → Quick debug',
-                    inline: false 
-                },
-                { 
-                    name: '📦 Management', 
-                    value: '`!service list` | `!key list`',
-                    inline: false 
-                }
-            ],
-            footer: { text: `Service ID: ${JNKIE_SERVICE_ID}` }
-        }]
-    });
-}
-
-async function handlePresets(message) {
-    message.reply('Prometheus Presets: 🟢 `minify` | 🔵 `weak` | 🟡 `medium`');
-}
-
-function handleStatus(message) {
-    message.reply(`✅ Online\n📦 Service: \`${JNKIE_SERVICE_ID}\`\n🔑 API: ${JNKIE_API_KEY ? 'Set' : 'Not Set'}`);
-}
-
-// ================================================================
-// JNKIE API
+// API & HELPERS
 // ================================================================
 function jnkieRequestRaw(method, endpoint, body = null) {
     return new Promise((resolve) => {
