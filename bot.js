@@ -115,7 +115,7 @@ async function handleObfuscate(message) {
                         value: 
                             '🟢 `minify` 🔵 `weak` 🟡 `medium`\n' +
                             '🟠 `strong` 🔴 `vm` 💀 `max`\n' +
-                            '⚡ `custom` (Roblox)'
+                            '⚡ `custom`'
                     }
                 ]
             }]
@@ -320,7 +320,7 @@ async function handleHelp(message) {
                     value: 
                         '🟢 `minify` 🔵 `weak` 🟡 `medium`\n' +
                         '🟠 `strong` 🔴 `vm` 💀 `max`\n' +
-                        '⚡ `custom` (Roblox)'
+                        '⚡ `custom`'
                 }
             ]
         }]
@@ -331,35 +331,36 @@ async function handlePresets(message) {
     await message.reply({
         embeds: [{
             color: 0x9b59b6,
-            title: '🎨 Presets',
+            title: '🎨 Presets (1x Obfuscate)',
+            description: 'Setiap preset = 1x proses obfuscation',
             fields: [
                 {
                     name: '🟢 Minify',
-                    value: 'Perkecil ukuran saja'
+                    value: 'Hapus whitespace & comments'
                 },
                 {
                     name: '🔵 Weak',
-                    value: 'Minify + Variable rename'
+                    value: 'Variable rename'
                 },
                 {
                     name: '🟡 Medium',
-                    value: 'Weak + String encryption + Control flow'
+                    value: 'Variable rename, String encryption, Control flow'
                 },
                 {
                     name: '🟠 Strong',
-                    value: 'Medium + Multi-layer + Anti-debug'
+                    value: 'Variable rename, String encryption, Control flow, Multi-layer, Anti-debug'
                 },
                 {
                     name: '🔴 VM',
-                    value: 'Virtual Machine bytecode wrapper'
+                    value: 'Bytecode + Virtual Machine wrapper'
                 },
                 {
                     name: '💀 Max',
-                    value: 'Strong + VM wrapper'
+                    value: 'Strong (1x) → VM wrapper (bungkus)\n*2 step tapi valid karena VM = wrapper*'
                 },
                 {
-                    name: '⚡ Custom (Roblox)',
-                    value: 'Strong preset (optimized for Roblox)\n• Variable rename\n• String encryption\n• Control flow\n• Multi-layer\n• Anti-debug'
+                    name: '⚡ Custom',
+                    value: 'Sama dengan Strong (untuk Roblox)'
                 }
             ]
         }]
