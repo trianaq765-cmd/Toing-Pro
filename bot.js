@@ -62,15 +62,14 @@ const PRESETS = {
     },
     max: {
         name: 'Maximum',
+        value: 'Strong',
         emoji: '💀',
-        custom: true,
-        type: 'max'
+        useVm: true
     },
     custom: {
         name: 'Custom (Roblox)',
-        emoji: '⚡',
-        custom: true,
-        type: 'custom'
+        value: 'Strong',
+        emoji: '⚡'
     }
 };
 
@@ -190,48 +189,54 @@ async function handleObfuscate(message) {
         let usedPreset = preset.name;
         let errorOutput = '';
 
-        if (preset.custom) {
-            if (preset.type === 'max') {
-                success = await runMaxPreset(inputPath, outputPath, tempPath, statusMsg, preset);
-                if (success) usedPreset = 'Maximum (Strong + VM)';
-            } else if (preset.type === 'custom') {
-                success = await runCustomPreset(inputPath, outputPath, tempPath, statusMsg, preset);
-                if (success) usedPreset = 'Custom (Roblox)';
-            }
+        if (preset.useVm) {
+            await statusMsg.edit({
+                embeds: [{
+                    color: 0xf39c12,
+                    title: `${preset.emoji} Processing...`,
+                    description: 'Step 1/2: **Strong**'
+                }]
+            });
 
-            if (!success) {
-                const fallbackResult = await runFallback(inputPath, outputPath);
-                success = fallbackResult.success;
-                errorOutput = fallbackResult.error;
-                if (success) usedPreset = 'Strong (Fallback)';
-            }
-        } else {
-            const result = await runSinglePreset(inputPath, outputPath, preset.value);
-            success = result.success;
-            errorOutput = result.error;
-
-            if (!success) {
-                const fallbackResult = await runFallback(inputPath, outputPath);
-                success = fallbackResult.success;
-                errorOutput = fallbackResult.error || errorOutput;
-                if (success) usedPreset = 'Default';
-            }
-        }
-
-        if (success && fs.existsSync(outputPath)) {
-            const obfuscatedCode = fs.readFileSync(outputPath, 'utf8');
+            const step1Result = await runPreset(inputPath, tempPath, 'Strong');
             
-            if (!obfuscatedCode || obfuscatedCode.length < 10) {
+            if (step1Result.success) {
                 await statusMsg.edit({
                     embeds: [{
-                        color: 0xe74c3c,
-                        title: '❌ Gagal',
-                        description: 'Output file kosong'
+                        color: 0xf39c12,
+                        title: `${preset.emoji} Processing...`,
+                        description: 'Step 2/2: **VM Wrapper**'
                     }]
                 });
-                return;
-            }
 
+                const step2Result = await runPreset(tempPath, outputPath, 'Vm');
+                
+                if (step2Result.success) {
+                    success = true;
+                    usedPreset = 'Maximum (Strong + VM)';
+                } else {
+                    fs.copyFileSync(tempPath, outputPath);
+                    success = true;
+                    usedPreset = 'Strong (VM skipped)';
+                }
+            } else {
+                errorOutput = step1Result.error;
+            }
+        } else {
+            const result = await runPreset(inputPath, outputPath, preset.value);
+            success = result.success;
+            errorOutput = result.error;
+        }
+
+        if (!success) {
+            const fallback = await runPreset(inputPath, outputPath, 'Minify');
+            success = fallback.success;
+            errorOutput = fallback.error || errorOutput;
+            if (success) usedPreset = 'Minify (Fallback)';
+        }
+
+        if (success && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+            const obfuscatedCode = fs.readFileSync(outputPath, 'utf8');
             const originalSize = Buffer.byteLength(cleanedCode, 'utf8');
             const finalCode = HEADER + obfuscatedCode;
             const obfuscatedSize = Buffer.byteLength(finalCode, 'utf8');
@@ -282,10 +287,10 @@ async function handleObfuscate(message) {
     }
 }
 
-async function runSinglePreset(inputPath, outputPath, presetValue) {
+async function runPreset(inputPath, outputPath, presetValue) {
     try {
         const command = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset ${presetValue} "${inputPath}" --out "${outputPath}" 2>&1`;
-        const { stdout, stderr } = await execAsync(command, { timeout: 120000 });
+        const { stdout, stderr } = await execAsync(command, { timeout: 180000 });
 
         if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
             return { success: true };
@@ -293,106 +298,6 @@ async function runSinglePreset(inputPath, outputPath, presetValue) {
         return { success: false, error: stdout || stderr || 'No output' };
     } catch (err) {
         return { success: false, error: err.stderr || err.message };
-    }
-}
-
-async function runMaxPreset(inputPath, outputPath, tempPath, statusMsg, preset) {
-    try {
-        await statusMsg.edit({
-            embeds: [{
-                color: 0xf39c12,
-                title: `${preset.emoji} Processing...`,
-                description: 'Step 1/2: **Strong**'
-            }]
-        });
-
-        const step1 = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Strong "${inputPath}" --out "${tempPath}" 2>&1`;
-        await execAsync(step1, { timeout: 120000 });
-
-        if (!fs.existsSync(tempPath) || fs.statSync(tempPath).size === 0) {
-            return false;
-        }
-
-        await statusMsg.edit({
-            embeds: [{
-                color: 0xf39c12,
-                title: `${preset.emoji} Processing...`,
-                description: 'Step 2/2: **Virtual Machine**'
-            }]
-        });
-
-        const step2 = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Vm "${tempPath}" --out "${outputPath}" 2>&1`;
-        await execAsync(step2, { timeout: 180000 });
-
-        return fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0;
-    } catch (err) {
-        console.error('Max preset error:', err.message);
-        return false;
-    }
-}
-
-async function runCustomPreset(inputPath, outputPath, tempPath, statusMsg, preset) {
-    try {
-        await statusMsg.edit({
-            embeds: [{
-                color: 0xf39c12,
-                title: `${preset.emoji} Processing...`,
-                description: 'Step 1/2: **Medium** (String Encryption + Control Flow)'
-            }]
-        });
-
-        const step1 = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Medium "${inputPath}" --out "${tempPath}" 2>&1`;
-        await execAsync(step1, { timeout: 120000 });
-
-        if (!fs.existsSync(tempPath) || fs.statSync(tempPath).size === 0) {
-            const directStrong = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Strong "${inputPath}" --out "${outputPath}" 2>&1`;
-            await execAsync(directStrong, { timeout: 120000 });
-            return fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0;
-        }
-
-        await statusMsg.edit({
-            embeds: [{
-                color: 0xf39c12,
-                title: `${preset.emoji} Processing...`,
-                description: 'Step 2/2: **Strong** (Multi-layer + Anti-debug)'
-            }]
-        });
-
-        const step2 = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Strong "${tempPath}" --out "${outputPath}" 2>&1`;
-        await execAsync(step2, { timeout: 120000 });
-
-        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-            return true;
-        }
-
-        fs.copyFileSync(tempPath, outputPath);
-        return fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0;
-    } catch (err) {
-        console.error('Custom preset error:', err.message);
-        
-        try {
-            const fallbackStrong = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Strong "${inputPath}" --out "${outputPath}" 2>&1`;
-            await execAsync(fallbackStrong, { timeout: 120000 });
-            return fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0;
-        } catch (e) {
-            return false;
-        }
-    }
-}
-
-async function runFallback(inputPath, outputPath) {
-    try {
-        if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
-        
-        const fallback = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Strong "${inputPath}" --out "${outputPath}" 2>&1`;
-        const { stdout, stderr } = await execAsync(fallback, { timeout: 120000 });
-
-        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-            return { success: true };
-        }
-        return { success: false, error: stdout || stderr };
-    } catch (err) {
-        return { success: false, error: err.message };
     }
 }
 
@@ -434,27 +339,27 @@ async function handlePresets(message) {
                 },
                 {
                     name: '🔵 Weak',
-                    value: 'Rename variables'
+                    value: 'Minify + Variable rename'
                 },
                 {
                     name: '🟡 Medium',
-                    value: 'String encryption + control flow'
+                    value: 'Weak + String encryption + Control flow'
                 },
                 {
                     name: '🟠 Strong',
-                    value: 'Multiple layers + anti-debug'
+                    value: 'Medium + Multi-layer + Anti-debug'
                 },
                 {
                     name: '🔴 VM',
-                    value: 'Virtual Machine protection'
+                    value: 'Virtual Machine bytecode wrapper'
                 },
                 {
                     name: '💀 Max',
-                    value: 'Strong → VM (Maximum)'
+                    value: 'Strong + VM wrapper'
                 },
                 {
                     name: '⚡ Custom (Roblox)',
-                    value: 'Medium → Strong\n• String encryption\n• Control flow\n• Multi-layer\n• Anti-debug\n*(Optimized untuk Roblox)*'
+                    value: 'Strong preset (optimized for Roblox)\n• Variable rename\n• String encryption\n• Control flow\n• Multi-layer\n• Anti-debug'
                 }
             ]
         }]
@@ -469,25 +374,13 @@ async function handleTest(message) {
 
     try {
         fs.writeFileSync(testPath, testCode, 'utf8');
-        
-        const command = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Minify "${testPath}" --out "${testOut}" 2>&1`;
-        await execAsync(command, { timeout: 15000 });
-        
-        let status, color;
-
-        if (fs.existsSync(testOut) && fs.statSync(testOut).size > 0) {
-            status = '✅ Working';
-            color = 0x2ecc71;
-        } else {
-            status = '❌ Failed';
-            color = 0xe74c3c;
-        }
+        const result = await runPreset(testPath, testOut, 'Minify');
 
         await message.reply({
             embeds: [{
-                color: color,
+                color: result.success ? 0x2ecc71 : 0xe74c3c,
                 title: '🧪 Test',
-                description: status
+                description: result.success ? '✅ Working' : '❌ Failed'
             }]
         });
 
