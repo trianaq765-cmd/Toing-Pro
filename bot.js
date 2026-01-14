@@ -3,6 +3,9 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const { promisify } = require('util');
+
+const execAsync = promisify(exec);
 
 // Dummy server untuk Render
 const PORT = process.env.PORT || 3000;
@@ -23,16 +26,26 @@ const client = new Client({
 
 const TOKEN = process.env.DISCORD_TOKEN;
 
+// Validasi TOKEN sebelum login
+if (!TOKEN) {
+    console.error('❌ ERROR: DISCORD_TOKEN tidak ditemukan di environment variables!');
+    process.exit(1);
+}
+
 const PRESETS = {
     minify: 'Minify',
-    weak: 'Weak', 
+    weak: 'Weak',
     medium: 'Medium',
     strong: 'Strong',
     vm: 'Vm'
 };
 
+// Path Prometheus - bisa diubah sesuai environment
+const PROMETHEUS_PATH = process.env.PROMETHEUS_PATH || '/app/Prometheus-master';
+
 client.on('ready', () => {
-    console.log(`Bot ${client.user.tag} sudah online!`);
+    console.log(`✅ Bot ${client.user.tag} sudah online!`);
+    console.log(`📁 Prometheus path: ${PROMETHEUS_PATH}`);
 });
 
 client.on('messageCreate', async (message) => {
@@ -40,224 +53,240 @@ client.on('messageCreate', async (message) => {
 
     // Command: !obfuscate [preset]
     if (message.content.startsWith('!obfuscate')) {
+        await handleObfuscate(message);
+    }
+
+    // Command: !example
+    if (message.content === '!example') {
+        await handleExample(message);
+    }
+
+    // Command: !test
+    if (message.content === '!test') {
+        await handleTest(message);
+    }
+
+    // Command: !help
+    if (message.content === '!help') {
+        await handleHelp(message);
+    }
+
+    // Command: !presets
+    if (message.content === '!presets') {
+        await handlePresets(message);
+    }
+});
+
+// ========== HANDLER FUNCTIONS ==========
+
+async function handleObfuscate(message) {
+    if (message.attachments.size === 0) {
+        return message.reply({
+            embeds: [{
+                color: 0xff0000,
+                title: '❌ File Tidak Ditemukan',
+                description: 'Kirim file `.lua` untuk di-obfuscate!',
+                fields: [
+                    {
+                        name: 'Cara Pakai:',
+                        value: '`!obfuscate [preset]` + attach file.lua'
+                    },
+                    {
+                        name: 'Presets:',
+                        value: '`minify`, `weak`, `medium`, `strong`, `vm`\nDefault: `minify`'
+                    }
+                ]
+            }]
+        });
+    }
+
+    const attachment = message.attachments.first();
+
+    if (!attachment.name.endsWith('.lua')) {
+        return message.reply({
+            embeds: [{
+                color: 0xff0000,
+                title: '❌ Format File Salah',
+                description: 'File harus berformat `.lua`!'
+            }]
+        });
+    }
+
+    if (attachment.size > 5 * 1024 * 1024) {
+        return message.reply({
+            embeds: [{
+                color: 0xff0000,
+                title: '❌ File Terlalu Besar',
+                description: 'Maksimal ukuran file: 5MB'
+            }]
+        });
+    }
+
+    const args = message.content.split(' ');
+    const presetName = args[1]?.toLowerCase() || 'minify';
+    const preset = PRESETS[presetName] || 'Minify';
+
+    const timestamp = Date.now();
+    const inputPath = path.join(PROMETHEUS_PATH, `temp_${timestamp}_input.lua`);
+    const outputPath = path.join(PROMETHEUS_PATH, `temp_${timestamp}_output.lua`);
+
+    let statusMsg;
+
+    try {
+        // Status: Downloading
+        statusMsg = await message.reply({
+            embeds: [{
+                color: 0xffff00,
+                title: '⏳ Processing',
+                description: 'Downloading file...',
+                fields: [
+                    { name: 'File', value: attachment.name, inline: true },
+                    { name: 'Size', value: `${(attachment.size / 1024).toFixed(2)} KB`, inline: true },
+                    { name: 'Preset', value: preset, inline: true }
+                ]
+            }]
+        });
+
+        // Download file
+        const response = await fetch(attachment.url);
         
-        if (message.attachments.size === 0) {
-            return message.reply({
+        if (!response.ok) {
+            throw new Error(`Failed to download file: ${response.status}`);
+        }
+
+        let luaCode = await response.text();
+
+        // Clean encoding issues
+        luaCode = cleanLuaCode(luaCode);
+
+        // Save input file
+        fs.writeFileSync(inputPath, luaCode, 'utf8');
+
+        // Status: Obfuscating
+        await statusMsg.edit({
+            embeds: [{
+                color: 0xffff00,
+                title: '⏳ Processing',
+                description: `Obfuscating with preset: **${preset}**...\n\n` +
+                    `> ℹ️ Langsung proses tanpa validasi syntax\n` +
+                    `> ✅ Support Roblox Luau 2025`
+            }]
+        });
+
+        // Run Prometheus - TANPA VALIDASI loadfile()!
+        let success = false;
+        let usedPreset = preset;
+        let errorOutput = '';
+
+        // Try dengan preset yang dipilih
+        try {
+            const command = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset ${preset} "${inputPath}" --out "${outputPath}" 2>&1`;
+            const { stdout, stderr } = await execAsync(command, { timeout: 60000 });
+            
+            console.log(`[Prometheus] stdout: ${stdout}`);
+            if (stderr) console.log(`[Prometheus] stderr: ${stderr}`);
+
+            if (fs.existsSync(outputPath)) {
+                success = true;
+            } else {
+                errorOutput = stdout || stderr || 'Unknown error';
+            }
+        } catch (err) {
+            console.log(`[Prometheus] Preset ${preset} failed:`, err.message);
+            errorOutput = err.message;
+        }
+
+        // Fallback ke tanpa preset jika gagal
+        if (!success) {
+            try {
+                const fallbackCommand = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua "${inputPath}" --out "${outputPath}" 2>&1`;
+                const { stdout, stderr } = await execAsync(fallbackCommand, { timeout: 60000 });
+                
+                if (fs.existsSync(outputPath)) {
+                    success = true;
+                    usedPreset = 'Default';
+                } else {
+                    errorOutput = stdout || stderr || errorOutput;
+                }
+            } catch (err) {
+                errorOutput = err.message;
+            }
+        }
+
+        // Handle result
+        if (success && fs.existsSync(outputPath)) {
+            const originalSize = fs.statSync(inputPath).size;
+            const obfuscatedSize = fs.statSync(outputPath).size;
+
+            const obfuscatedFile = new AttachmentBuilder(outputPath, {
+                name: `obfuscated_${attachment.name}`
+            });
+
+            await statusMsg.edit({
+                embeds: [{
+                    color: 0x00ff00,
+                    title: '✅ Obfuscation Berhasil!',
+                    fields: [
+                        { name: 'Original Size', value: `${(originalSize / 1024).toFixed(2)} KB`, inline: true },
+                        { name: 'Obfuscated Size', value: `${(obfuscatedSize / 1024).toFixed(2)} KB`, inline: true },
+                        { name: 'Preset Used', value: usedPreset, inline: true }
+                    ],
+                    footer: {
+                        text: 'Prometheus Obfuscator | Support Roblox Luau 2025'
+                    },
+                    timestamp: new Date()
+                }],
+                files: [obfuscatedFile]
+            });
+        } else {
+            // Obfuscation failed
+            await statusMsg.edit({
                 embeds: [{
                     color: 0xff0000,
-                    title: '❌ File Tidak Ditemukan',
-                    description: 'Kirim file `.lua` untuk di-obfuscate!',
+                    title: '❌ Obfuscation Failed',
+                    description: 'Prometheus tidak dapat memproses file ini.',
                     fields: [
                         {
-                            name: 'Cara Pakai:',
-                            value: '`!obfuscate [preset]` + attach file.lua'
+                            name: 'Error:',
+                            value: `\`\`\`${errorOutput.substring(0, 900)}\`\`\``
                         },
                         {
-                            name: 'Presets:',
-                            value: '`minify`, `weak`, `medium`, `strong`, `vm`\nDefault: `minify`'
+                            name: '💡 Kemungkinan Penyebab:',
+                            value: '• Syntax error dalam script\n' +
+                                   '• Script terlalu kompleks\n' +
+                                   '• Gunakan syntax Lua/Luau yang valid'
                         }
                     ]
                 }]
             });
         }
 
-        const attachment = message.attachments.first();
+    } catch (err) {
+        console.error('[Obfuscate] Error:', err);
         
-        if (!attachment.name.endsWith('.lua')) {
-            return message.reply({
-                embeds: [{
-                    color: 0xff0000,
-                    title: '❌ Format File Salah',
-                    description: 'File harus berformat `.lua`!'
-                }]
-            });
+        const errorEmbed = {
+            color: 0xff0000,
+            title: '❌ Error',
+            description: err.message
+        };
+
+        if (statusMsg) {
+            await statusMsg.edit({ embeds: [errorEmbed] });
+        } else {
+            await message.reply({ embeds: [errorEmbed] });
         }
-
-        if (attachment.size > 5 * 1024 * 1024) {
-            return message.reply({
-                embeds: [{
-                    color: 0xff0000,
-                    title: '❌ File Terlalu Besar',
-                    description: 'Maksimal ukuran file: 5MB'
-                }]
-            });
-        }
-
-        const args = message.content.split(' ');
-        const presetName = args[1]?.toLowerCase() || 'minify';
-        const preset = PRESETS[presetName] || 'Minify';
-
-        try {
-            const statusMsg = await message.reply({
-                embeds: [{
-                    color: 0xffff00,
-                    title: '⏳ Processing',
-                    description: `Downloading file...`,
-                    fields: [
-                        { name: 'File', value: attachment.name, inline: true },
-                        { name: 'Size', value: `${(attachment.size / 1024).toFixed(2)} KB`, inline: true },
-                        { name: 'Preset', value: preset, inline: true }
-                    ]
-                }]
-            });
-
-            const response = await fetch(attachment.url);
-            let luaCode = await response.text();
-            
-            // Clean encoding
-            luaCode = luaCode.replace(/^\uFEFF/, '');
-            luaCode = luaCode.replace(/\r\n/g, '\n');
-            luaCode = luaCode.trim();
-            
-            if (luaCode.startsWith('?') || luaCode.charCodeAt(0) === 63) {
-                luaCode = luaCode.substring(1);
-            }
-            
-            const timestamp = Date.now();
-            const inputPath = `/app/Prometheus-master/temp_${timestamp}_input.lua`;
-            const outputPath = `/app/Prometheus-master/temp_${timestamp}_output.lua`;
-            const validatePath = `/app/Prometheus-master/temp_${timestamp}_validate.lua`;
-            
-            fs.writeFileSync(inputPath, luaCode, 'utf8');
-            
-            await statusMsg.edit({
-                embeds: [{
-                    color: 0xffff00,
-                    title: '⏳ Processing',
-                    description: `Validating Lua syntax...`
-                }]
-            });
-            
-            // FIXED: Validasi dengan cara yang benar
-            const validateScript = `
-local f = assert(loadfile("${inputPath}"))
-print("OK")
-`;
-            fs.writeFileSync(validatePath, validateScript);
-            
-            exec(`lua5.1 ${validatePath}`, async (syntaxError, syntaxStdout, syntaxStderr) => {
-                // Cleanup validate script
-                if (fs.existsSync(validatePath)) fs.unlinkSync(validatePath);
-                
-                if (syntaxError || syntaxStderr) {
-                    await statusMsg.edit({
-                        embeds: [{
-                            color: 0xff0000,
-                            title: '❌ Syntax Error',
-                            description: 'File Lua memiliki error syntax!',
-                            fields: [
-                                {
-                                    name: 'Error:',
-                                    value: `\`\`\`${syntaxStderr || syntaxError.message}\`\`\``.substring(0, 1024)
-                                },
-                                {
-                                    name: 'Tips:',
-                                    value: '• Pastikan semua `if`, `for`, `while`, `function` memiliki `end`\n• Cek tanda kutip tidak ada yang kurang\n• Gunakan `!example` untuk lihat contoh yang benar'
-                                }
-                            ]
-                        }]
-                    });
-                    
-                    if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-                    return;
-                }
-                
-                await statusMsg.edit({
-                    embeds: [{
-                        color: 0xffff00,
-                        title: '⏳ Processing',
-                        description: `Obfuscating with preset: ${preset}...`
-                    }]
-                });
-                
-                const command = `cd /app/Prometheus-master && lua5.1 cli.lua --preset ${preset} temp_${timestamp}_input.lua --out temp_${timestamp}_output.lua 2>&1`;
-                
-                exec(command, async (error, stdout, stderr) => {
-                    console.log(`[Prometheus] stdout: ${stdout}`);
-                    console.log(`[Prometheus] stderr: ${stderr}`);
-                    
-                    if (error || !fs.existsSync(outputPath)) {
-                        const fallbackCommand = `cd /app/Prometheus-master && lua5.1 cli.lua temp_${timestamp}_input.lua --out temp_${timestamp}_output.lua 2>&1`;
-                        
-                        exec(fallbackCommand, async (error2, stdout2, stderr2) => {
-                            if (error2 || !fs.existsSync(outputPath)) {
-                                await statusMsg.edit({
-                                    embeds: [{
-                                        color: 0xff0000,
-                                        title: '❌ Obfuscation Failed',
-                                        description: 'Tidak dapat meng-obfuscate file!',
-                                        fields: [
-                                            {
-                                                name: 'Error:',
-                                                value: `\`\`\`${stderr2 || stderr || error2?.message || error?.message}\`\`\``.substring(0, 1024)
-                                            }
-                                        ]
-                                    }]
-                                });
-                                
-                                if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-                                return;
-                            }
-                            
-                            await sendResult('Default');
-                        });
-                        return;
-                    }
-                    
-                    await sendResult(preset);
-                });
-                
-                async function sendResult(usedPreset) {
-                    try {
-                        const stats = fs.statSync(outputPath);
-                        const originalSize = fs.statSync(inputPath).size;
-                        
-                        const obfuscatedFile = new AttachmentBuilder(outputPath, { 
-                            name: `obfuscated_${attachment.name}` 
-                        });
-                        
-                        await statusMsg.edit({ 
-                            embeds: [{
-                                color: 0x00ff00,
-                                title: '✅ Obfuscation Berhasil!',
-                                fields: [
-                                    { name: 'Original Size', value: `${(originalSize / 1024).toFixed(2)} KB`, inline: true },
-                                    { name: 'Obfuscated Size', value: `${(stats.size / 1024).toFixed(2)} KB`, inline: true },
-                                    { name: 'Preset Used', value: usedPreset, inline: true }
-                                ],
-                                footer: {
-                                    text: 'Prometheus Obfuscator'
-                                },
-                                timestamp: new Date()
-                            }],
-                            files: [obfuscatedFile] 
-                        });
-                        
-                    } catch (err) {
-                        console.error('[SendResult] Error:', err);
-                        await statusMsg.edit('❌ Error saat mengirim file hasil');
-                    } finally {
-                        if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-                        if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
-                    }
-                }
-            });
-
-        } catch (err) {
-            console.error('[Main] Error:', err);
-            await message.reply({
-                embeds: [{
-                    color: 0xff0000,
-                    title: '❌ Error',
-                    description: err.message
-                }]
-            });
-        }
+    } finally {
+        // Cleanup files
+        cleanupFiles(inputPath, outputPath);
     }
+}
 
-    // Command: !example
-    if (message.content === '!example') {
-        const examples = `-- ✅ CONTOH 1: Print Sederhana
+async function handleExample(message) {
+    const examples = `-- =============================================
+-- CONTOH SCRIPT ROBLOX YANG BISA DI-OBFUSCATE
+-- =============================================
+
+-- ✅ CONTOH 1: Print Sederhana
 print("Hello World")
 
 -- ✅ CONTOH 2: Variables
@@ -265,19 +294,19 @@ local name = "Player"
 local health = 100
 print(name .. " has " .. health .. " HP")
 
--- ✅ CONTOH 3: If Statement (HARUS ADA END!)
+-- ✅ CONTOH 3: If Statement
 local x = 10
 if x > 5 then
     print("X lebih besar dari 5")
 end
 
--- ✅ CONTOH 4: Function (HARUS ADA END!)
-function greet(name)
-    return "Hello, " .. name
+-- ✅ CONTOH 4: Function
+local function greet(playerName)
+    return "Hello, " .. playerName
 end
 print(greet("World"))
 
--- ✅ CONTOH 5: Loop (HARUS ADA END!)
+-- ✅ CONTOH 5: Loop
 for i = 1, 5 do
     print("Loop ke-" .. i)
 end
@@ -290,117 +319,241 @@ local player = {
 }
 print(player.name)
 
--- ❌ CONTOH SALAH 1: Kurang END
-if x > 5 then
-    print("Test")
--- KURANG END DISINI!
+-- ✅ CONTOH 7: While Loop
+local count = 0
+while count < 3 do
+    print("Count: " .. count)
+    count = count + 1
+end
 
--- ❌ CONTOH SALAH 2: Kutip tidak seimbang
-local text = "Hello World
+-- ✅ CONTOH 8: Nested Functions
+local function outer()
+    local function inner()
+        return "Inner function"
+    end
+    return inner()
+end
+print(outer())
 
--- ❌ CONTOH SALAH 3: Karakter aneh di awal
-?print("Hello")`;
+-- ✅ CONTOH 9: Roblox-style (akan diproses langsung oleh Prometheus)
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
 
-        const buffer = Buffer.from(examples, 'utf8');
-        const file = new AttachmentBuilder(buffer, { name: 'contoh_lua.lua' });
+local function onPlayerJoin(plr)
+    print(plr.Name .. " joined!")
+end
 
-        await message.reply({
-            embeds: [{
-                color: 0x00ff00,
-                title: '📝 Contoh Syntax Lua yang Benar',
-                description: 'Download file dibawah untuk melihat contoh lengkap!',
-                fields: [
-                    {
-                        name: '✅ Yang Benar:',
-                        value: '• Setiap `if`, `for`, `while`, `function` harus diakhiri `end`\n• Tanda kutip harus seimbang `"..."` atau `\'...\'`\n• Tidak ada karakter aneh di awal file'
-                    },
-                    {
-                        name: '💡 Tips:',
-                        value: '• Test script kamu di Roblox Studio dulu\n• Atau gunakan online Lua compiler: https://www.lua.org/cgi-bin/demo'
-                    }
-                ]
-            }],
-            files: [file]
-        });
-    }
+Players.PlayerAdded:Connect(onPlayerJoin)`;
 
-    // Command: !test
-    if (message.content === '!test') {
-        const testCode = `print("Hello World")
+    const buffer = Buffer.from(examples, 'utf8');
+    const file = new AttachmentBuilder(buffer, { name: 'contoh_roblox.lua' });
+
+    await message.reply({
+        embeds: [{
+            color: 0x00ff00,
+            title: '📝 Contoh Script Roblox untuk Obfuscate',
+            description: 'Download file dibawah untuk melihat contoh lengkap!',
+            fields: [
+                {
+                    name: '✅ Support Roblox Luau 2025',
+                    value: 'Bot ini langsung memproses ke Prometheus tanpa validasi Lua 5.1,\n' +
+                           'sehingga syntax Roblox modern bisa diproses.'
+                },
+                {
+                    name: '💡 Tips:',
+                    value: '• Pastikan script tidak ada typo\n' +
+                           '• Test script di Roblox Studio terlebih dahulu\n' +
+                           '• Gunakan `!presets` untuk lihat perbedaan preset'
+                }
+            ]
+        }],
+        files: [file]
+    });
+}
+
+async function handleTest(message) {
+    const testCode = `print("Hello World")
 local x = 10
 if x > 5 then
     print("X is greater than 5")
-end`;
-        
-        const testPath = '/app/Prometheus-master/test_sample.lua';
-        const testOutput = '/app/Prometheus-master/test_sample_out.lua';
-        
-        fs.writeFileSync(testPath, testCode);
-        
-        exec(`cd /app/Prometheus-master && lua5.1 cli.lua --preset Minify test_sample.lua --out test_sample_out.lua`, async (error, stdout, stderr) => {
-            let status = '❌ Failed';
-            let outputContent = 'No output generated';
-            
-            if (fs.existsSync(testOutput)) {
-                status = '✅ Success';
-                outputContent = fs.readFileSync(testOutput, 'utf8').substring(0, 500);
-                fs.unlinkSync(testOutput);
-            }
-            
-            if (fs.existsSync(testPath)) fs.unlinkSync(testPath);
-            
-            await message.reply({
-                embeds: [{
-                    color: status === '✅ Success' ? 0x00ff00 : 0xff0000,
-                    title: 'Prometheus Test',
-                    fields: [
-                        { name: 'Status', value: status },
-                        { name: 'Input', value: `\`\`\`lua\n${testCode}\n\`\`\`` },
-                        { name: 'Output', value: `\`\`\`lua\n${outputContent}\n\`\`\`` }
-                    ]
-                }]
-            });
-        });
-    }
+end
 
-    // Command: !help
-    if (message.content === '!help') {
-        await message.reply({
+local function test()
+    return "Prometheus is working!"
+end
+print(test())`;
+
+    const timestamp = Date.now();
+    const testPath = path.join(PROMETHEUS_PATH, `test_${timestamp}.lua`);
+    const testOutput = path.join(PROMETHEUS_PATH, `test_${timestamp}_out.lua`);
+
+    const statusMsg = await message.reply({
+        embeds: [{
+            color: 0xffff00,
+            title: '⏳ Testing Prometheus...',
+            description: 'Mohon tunggu...'
+        }]
+    });
+
+    try {
+        fs.writeFileSync(testPath, testCode);
+
+        const command = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Minify "${testPath}" --out "${testOutput}" 2>&1`;
+        const { stdout, stderr } = await execAsync(command, { timeout: 30000 });
+
+        let status, outputContent, color;
+
+        if (fs.existsSync(testOutput)) {
+            status = '✅ Success';
+            outputContent = fs.readFileSync(testOutput, 'utf8').substring(0, 500);
+            color = 0x00ff00;
+        } else {
+            status = '❌ Failed';
+            outputContent = stdout || stderr || 'No output generated';
+            color = 0xff0000;
+        }
+
+        await statusMsg.edit({
             embeds: [{
-                color: 0x0099ff,
-                title: '📖 Prometheus Obfuscator Bot',
-                description: 'Bot untuk obfuscate script Lua menggunakan Prometheus',
+                color: color,
+                title: '🧪 Prometheus Test Result',
                 fields: [
-                    {
-                        name: '📌 Commands',
-                        value: `\`!obfuscate [preset]\` - Obfuscate file Lua
-\`!example\` - Download contoh syntax yang benar
-\`!test\` - Test Prometheus installation
-\`!help\` - Tampilkan bantuan`
-                    },
-                    {
-                        name: '🎨 Presets',
-                        value: `\`minify\` - Minify code (paling ringan)
-\`weak\` - Obfuscation lemah
-\`medium\` - Obfuscation sedang
-\`strong\` - Obfuscation kuat
-\`vm\` - Virtual Machine (paling kuat)`
-                    },
-                    {
-                        name: '💡 Contoh',
-                        value: `\`!obfuscate\` + attach file.lua
-\`!obfuscate strong\` + attach file.lua`
-                    }
-                ],
-                footer: {
-                    text: 'Max file size: 5MB | Format: .lua'
-                }
+                    { name: 'Status', value: status },
+                    { name: 'Input', value: `\`\`\`lua\n${testCode.substring(0, 300)}\n\`\`\`` },
+                    { name: 'Output', value: `\`\`\`lua\n${outputContent}\n\`\`\`` }
+                ]
             }]
         });
+
+    } catch (err) {
+        await statusMsg.edit({
+            embeds: [{
+                color: 0xff0000,
+                title: '❌ Test Failed',
+                description: `\`\`\`${err.message}\`\`\``
+            }]
+        });
+    } finally {
+        cleanupFiles(testPath, testOutput);
     }
+}
+
+async function handleHelp(message) {
+    await message.reply({
+        embeds: [{
+            color: 0x0099ff,
+            title: '📖 Prometheus Obfuscator Bot',
+            description: 'Bot untuk obfuscate script Lua/Roblox menggunakan Prometheus\n\n' +
+                         '**✅ Support Roblox Luau 2025!**',
+            fields: [
+                {
+                    name: '📌 Commands',
+                    value: `\`!obfuscate [preset]\` - Obfuscate file Lua
+\`!presets\` - Info detail tentang presets
+\`!example\` - Download contoh script
+\`!test\` - Test Prometheus installation
+\`!help\` - Tampilkan bantuan ini`
+                },
+                {
+                    name: '🎨 Presets',
+                    value: `\`minify\` - Minify code (default)
+\`weak\` - Obfuscation ringan
+\`medium\` - Obfuscation sedang
+\`strong\` - Obfuscation kuat
+\`vm\` - Virtual Machine (terkuat)`
+                },
+                {
+                    name: '💡 Contoh Penggunaan',
+                    value: `\`!obfuscate\` + attach file.lua
+\`!obfuscate strong\` + attach file.lua
+\`!obfuscate vm\` + attach file.lua`
+                }
+            ],
+            footer: {
+                text: 'Max file size: 5MB | Format: .lua | Support Roblox Luau 2025'
+            }
+        }]
+    });
+}
+
+async function handlePresets(message) {
+    await message.reply({
+        embeds: [{
+            color: 0x9b59b6,
+            title: '🎨 Prometheus Presets',
+            description: 'Penjelasan detail setiap preset obfuscation:',
+            fields: [
+                {
+                    name: '📦 Minify (Default)',
+                    value: '• Hanya memperkecil ukuran code\n• Hapus whitespace & comments\n• Paling cepat, output terkecil\n• **Recommended untuk:** Script kecil'
+                },
+                {
+                    name: '🔓 Weak',
+                    value: '• Obfuscation dasar\n• Rename variables\n• Mudah di-reverse\n• **Recommended untuk:** Testing'
+                },
+                {
+                    name: '🔒 Medium',
+                    value: '• Obfuscation sedang\n• String encryption\n• Control flow changes\n• **Recommended untuk:** Script biasa'
+                },
+                {
+                    name: '🔐 Strong',
+                    value: '• Obfuscation kuat\n• Multiple layers encryption\n• Anti-debug features\n• **Recommended untuk:** Script penting'
+                },
+                {
+                    name: '🛡️ VM (Virtual Machine)',
+                    value: '• Paling kuat & kompleks\n• Convert ke bytecode + VM\n• Sangat sulit di-reverse\n• Output lebih besar\n• **Recommended untuk:** Script premium'
+                }
+            ]
+        }]
+    });
+}
+
+// ========== UTILITY FUNCTIONS ==========
+
+function cleanLuaCode(code) {
+    // Remove BOM
+    code = code.replace(/^\uFEFF/, '');
+    // Normalize line endings
+    code = code.replace(/\r\n/g, '\n');
+    code = code.replace(/\r/g, '\n');
+    // Trim
+    code = code.trim();
+    // Remove weird starting characters
+    if (code.charCodeAt(0) === 63) { // '?'
+        code = code.substring(1);
+    }
+    return code;
+}
+
+function cleanupFiles(...files) {
+    for (const file of files) {
+        try {
+            if (file && fs.existsSync(file)) {
+                fs.unlinkSync(file);
+            }
+        } catch (err) {
+            console.error(`[Cleanup] Failed to delete ${file}:`, err.message);
+        }
+    }
+}
+
+// ========== ERROR HANDLING ==========
+
+client.on('error', (error) => {
+    console.error('[Discord Client Error]:', error);
 });
 
-client.on('error', console.error);
-process.on('unhandledRejection', console.error);
+process.on('unhandledRejection', (error) => {
+    console.error('[Unhandled Rejection]:', error);
+});
 
-client.login(TOKEN);
+process.on('uncaughtException', (error) => {
+    console.error('[Uncaught Exception]:', error);
+});
+
+// ========== LOGIN ==========
+
+client.login(TOKEN).catch((err) => {
+    console.error('❌ Failed to login:', err.message);
+    process.exit(1);
+});
