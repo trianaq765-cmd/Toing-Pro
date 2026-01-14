@@ -25,7 +25,7 @@ const client = new Client({
 const TOKEN = process.env.DISCORD_TOKEN;
 const PROMETHEUS_PATH = process.env.PROMETHEUS_PATH || '/app/prometheus';
 const JNKIE_API_KEY = process.env.JNKIE_API_KEY;
-const JNKIE_SERVICE_ID = process.env.JNKIE_SERVICE_ID; // Default service ID
+const JNKIE_SERVICE_ID = process.env.JNKIE_SERVICE_ID;
 
 if (!TOKEN) {
     console.error('TOKEN NOT FOUND');
@@ -62,11 +62,192 @@ client.on('messageCreate', async (message) => {
         else if (cmd.startsWith('!key')) await handleKey(message, args);
         else if (cmd === '!help') await handleHelp(message);
         else if (cmd === '!status') await handleStatus(message);
+        else if (cmd === '!debug') await handleDebug(message);
     } catch (err) {
         console.error(err);
     }
 });
 
+// ================================================================
+// DEBUG HANDLER - Lihat raw response dari API
+// ================================================================
+async function handleDebug(message) {
+    if (!JNKIE_API_KEY) {
+        return message.reply('❌ API Key belum di-set');
+    }
+
+    const statusMsg = await message.reply('🔍 Testing jnkie API...');
+
+    const endpoints = [
+        { name: 'Services', path: '/services' },
+        { name: 'Providers', path: '/providers' },
+        { name: 'Integrations', path: '/integrations' },
+        { name: 'Integration Types', path: '/integrations/types' },
+        { name: 'Keys', path: '/keys?limit=5' }
+    ];
+
+    let results = [];
+
+    for (const ep of endpoints) {
+        const result = await jnkieRequestDebug('GET', ep.path);
+        results.push({
+            name: ep.name,
+            status: result.statusCode,
+            success: result.success,
+            dataType: typeof result.data,
+            isArray: Array.isArray(result.data),
+            length: Array.isArray(result.data) ? result.data.length : 'N/A',
+            sample: JSON.stringify(result.data).substring(0, 200)
+        });
+    }
+
+    const fields = results.map(r => ({
+        name: `${r.success ? '✅' : '❌'} ${r.name}`,
+        value: `Status: ${r.status}\nType: ${r.dataType}\nArray: ${r.isArray}\nLength: ${r.length}\nSample: \`${r.sample}...\``
+    }));
+
+    await statusMsg.edit({
+        embeds: [{
+            color: 0x3498db,
+            title: '🔍 API Debug',
+            fields: fields.slice(0, 5),
+            footer: { text: `API Key: ${JNKIE_API_KEY.substring(0, 10)}...` },
+            timestamp: new Date()
+        }]
+    });
+
+    // Send full raw response in separate message
+    const fullDebug = results.map(r => `=== ${r.name} ===\n${r.sample}`).join('\n\n');
+    await message.channel.send(`\`\`\`json\n${fullDebug.substring(0, 1900)}\n\`\`\``);
+}
+
+// ================================================================
+// JNKIE API WITH DEBUG
+// ================================================================
+function jnkieRequestDebug(method, endpoint, body = null) {
+    return new Promise((resolve) => {
+        const postData = body ? JSON.stringify(body) : '';
+        
+        const options = {
+            hostname: 'api.jnkie.com',
+            port: 443,
+            path: `/api/v2${endpoint}`,
+            method: method,
+            headers: {
+                'Authorization': `Bearer ${JNKIE_API_KEY}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        };
+
+        if (body) options.headers['Content-Length'] = Buffer.byteLength(postData);
+
+        console.log(`[JNKIE DEBUG] ${method} ${endpoint}`);
+
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                console.log(`[JNKIE DEBUG] Status: ${res.statusCode}`);
+                console.log(`[JNKIE DEBUG] Raw Response: ${data.substring(0, 500)}`);
+                
+                try {
+                    const json = JSON.parse(data);
+                    resolve({ 
+                        success: res.statusCode >= 200 && res.statusCode < 300,
+                        statusCode: res.statusCode,
+                        data: json,
+                        raw: data
+                    });
+                } catch (e) {
+                    resolve({ 
+                        success: false, 
+                        statusCode: res.statusCode,
+                        data: data,
+                        raw: data,
+                        parseError: e.message
+                    });
+                }
+            });
+        });
+
+        req.on('error', (e) => {
+            console.log(`[JNKIE DEBUG] Error: ${e.message}`);
+            resolve({ success: false, error: e.message });
+        });
+        
+        req.setTimeout(30000, () => { 
+            req.destroy(); 
+            resolve({ success: false, error: 'Timeout' }); 
+        });
+
+        if (body) req.write(postData);
+        req.end();
+    });
+}
+
+function jnkieRequest(method, endpoint, body = null) {
+    return new Promise((resolve) => {
+        const postData = body ? JSON.stringify(body) : '';
+        
+        const options = {
+            hostname: 'api.jnkie.com',
+            port: 443,
+            path: `/api/v2${endpoint}`,
+            method: method,
+            headers: {
+                'Authorization': `Bearer ${JNKIE_API_KEY}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        };
+
+        if (body) options.headers['Content-Length'] = Buffer.byteLength(postData);
+
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    
+                    // Handle various response formats
+                    let responseData = json;
+                    let errorMsg = null;
+
+                    // Check for nested data
+                    if (json.data !== undefined) {
+                        responseData = json.data;
+                    }
+
+                    // Check for error messages
+                    if (json.message) errorMsg = json.message;
+                    if (json.error) errorMsg = typeof json.error === 'string' ? json.error : JSON.stringify(json.error);
+                    if (json.errors) errorMsg = JSON.stringify(json.errors);
+
+                    resolve({ 
+                        success: res.statusCode >= 200 && res.statusCode < 300, 
+                        data: responseData,
+                        error: errorMsg,
+                        statusCode: res.statusCode
+                    });
+                } catch (e) {
+                    resolve({ success: false, error: `Parse error: ${data.substring(0, 100)}` });
+                }
+            });
+        });
+
+        req.on('error', (e) => resolve({ success: false, error: e.message }));
+        req.setTimeout(30000, () => { req.destroy(); resolve({ success: false, error: 'Timeout' }); });
+
+        if (body) req.write(postData);
+        req.end();
+    });
+}
+
+// ================================================================
+// OBFUSCATOR
+// ================================================================
 async function handleObfuscate(message) {
     if (message.attachments.size === 0) {
         return message.reply({
@@ -129,6 +310,9 @@ async function handleObfuscate(message) {
     }
 }
 
+// ================================================================
+// SERVICES
+// ================================================================
 async function handleService(message, args) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
 
@@ -136,21 +320,51 @@ async function handleService(message, args) {
 
     if (!action || action === 'list') {
         const result = await jnkieRequest('GET', '/services');
-        if (result.success) {
-            const services = Array.isArray(result.data) ? result.data : [];
-            if (services.length === 0) {
-                return message.reply({ embeds: [{ color: 0x3498db, title: '📦 Services', description: 'Tidak ada service. Buat dengan `!service create [name]`' }] });
-            }
-            const list = services.map((s, i) => `${i+1}. **${s.name}**\n   ID: \`${s.id}\`\n   Slug: \`${s.slug || 'N/A'}\``).join('\n\n');
-            return message.reply({ embeds: [{ color: 0x3498db, title: '📦 Services', description: list }] });
+        
+        if (!result.success) {
+            return message.reply({
+                embeds: [{
+                    color: 0xe74c3c,
+                    title: '❌ Error',
+                    description: `Status: ${result.statusCode}\nError: ${result.error || 'Unknown'}`,
+                    footer: { text: 'Gunakan !debug untuk info lebih lanjut' }
+                }]
+            });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+
+        const services = Array.isArray(result.data) ? result.data : (result.data ? [result.data] : []);
+        
+        if (services.length === 0) {
+            return message.reply({ 
+                embeds: [{ 
+                    color: 0x3498db, 
+                    title: '📦 Services', 
+                    description: 'Tidak ada service.\n\nBuat dengan: `!service create [name]`' 
+                }] 
+            });
+        }
+
+        const list = services.map((s, i) => {
+            const id = s.id || s._id || 'N/A';
+            const name = s.name || 'Unnamed';
+            return `**${i+1}. ${name}**\nID: \`${id}\``;
+        }).join('\n\n');
+
+        return message.reply({ 
+            embeds: [{ 
+                color: 0x3498db, 
+                title: '📦 Services', 
+                description: list,
+                footer: { text: `Total: ${services.length}` }
+            }] 
+        });
     }
 
     if (action === 'create') {
         const name = args[1];
-        const description = args.slice(2).join(' ') || 'No description';
         if (!name) return message.reply('❌ Usage: `!service create [name] [description]`');
+        
+        const description = args.slice(2).join(' ') || 'No description';
 
         const result = await jnkieRequest('POST', '/services', {
             name: name,
@@ -161,16 +375,16 @@ async function handleService(message, args) {
         });
 
         if (result.success) {
-            const id = result.data?.id || 'N/A';
+            const id = result.data?.id || result.data?._id || 'N/A';
             return message.reply({ 
                 embeds: [{ 
                     color: 0x2ecc71, 
                     title: '✅ Service Created', 
-                    description: `Name: **${name}**\nID: \`${id}\`\n\n💡 Set environment variable:\n\`JNKIE_SERVICE_ID=${id}\``
+                    description: `**Name:** ${name}\n**ID:** \`${id}\`\n\n💡 Untuk set default, tambah env:\n\`JNKIE_SERVICE_ID=${id}\``
                 }] 
             });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Unknown error'}`);
     }
 
     if (action === 'get') {
@@ -184,18 +398,11 @@ async function handleService(message, args) {
                 embeds: [{ 
                     color: 0x3498db, 
                     title: '📦 Service Details', 
-                    fields: [
-                        { name: 'Name', value: s.name || 'N/A', inline: true },
-                        { name: 'ID', value: `\`${s.id}\`` || 'N/A', inline: true },
-                        { name: 'Slug', value: s.slug || 'N/A', inline: true },
-                        { name: 'Description', value: s.description || 'N/A' },
-                        { name: 'Premium', value: s.is_premium ? 'Yes' : 'No', inline: true },
-                        { name: 'Keyless', value: s.keyless_mode ? 'Yes' : 'No', inline: true }
-                    ]
+                    description: `**Name:** ${s.name || 'N/A'}\n**ID:** \`${s.id || s._id}\`\n**Description:** ${s.description || 'N/A'}\n**Slug:** ${s.slug || 'N/A'}\n**Premium:** ${s.is_premium ? 'Yes' : 'No'}\n**Keyless:** ${s.keyless_mode ? 'Yes' : 'No'}`
                 }]
             });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Not found'}`);
     }
 
     if (action === 'delete') {
@@ -206,12 +413,15 @@ async function handleService(message, args) {
         if (result.success) {
             return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Service Deleted' }] });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Failed'}`);
     }
 
     return message.reply('❌ Usage: `!service [list|create|get|delete]`');
 }
 
+// ================================================================
+// PROVIDERS
+// ================================================================
 async function handleProvider(message, args) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
 
@@ -219,15 +429,19 @@ async function handleProvider(message, args) {
 
     if (!action || action === 'list') {
         const result = await jnkieRequest('GET', '/providers');
-        if (result.success) {
-            const providers = Array.isArray(result.data) ? result.data : [];
-            if (providers.length === 0) {
-                return message.reply({ embeds: [{ color: 0x9b59b6, title: '🔌 Providers', description: 'Tidak ada provider' }] });
-            }
-            const list = providers.map((p, i) => `${i+1}. **${p.name}**\n   ID: \`${p.id}\``).join('\n\n');
-            return message.reply({ embeds: [{ color: 0x9b59b6, title: '🔌 Providers', description: list }] });
+        
+        if (!result.success) {
+            return message.reply(`❌ Error: ${result.error || 'Unknown'}`);
         }
-        return message.reply(`❌ Error: ${result.error}`);
+
+        const items = Array.isArray(result.data) ? result.data : (result.data ? [result.data] : []);
+        
+        if (items.length === 0) {
+            return message.reply({ embeds: [{ color: 0x9b59b6, title: '🔌 Providers', description: 'Tidak ada provider' }] });
+        }
+
+        const list = items.map((p, i) => `**${i+1}. ${p.name || 'Unnamed'}**\nID: \`${p.id || p._id}\``).join('\n\n');
+        return message.reply({ embeds: [{ color: 0x9b59b6, title: '🔌 Providers', description: list }] });
     }
 
     if (action === 'create') {
@@ -236,10 +450,10 @@ async function handleProvider(message, args) {
 
         const result = await jnkieRequest('POST', '/providers', { name: name });
         if (result.success) {
-            const id = result.data?.id || 'N/A';
+            const id = result.data?.id || result.data?._id || 'N/A';
             return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Provider Created', description: `ID: \`${id}\`` }] });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Failed'}`);
     }
 
     if (action === 'get') {
@@ -253,14 +467,11 @@ async function handleProvider(message, args) {
                 embeds: [{ 
                     color: 0x9b59b6, 
                     title: '🔌 Provider', 
-                    fields: [
-                        { name: 'Name', value: p.name || 'N/A', inline: true },
-                        { name: 'ID', value: `\`${p.id}\`` || 'N/A', inline: true }
-                    ]
+                    description: `**Name:** ${p.name}\n**ID:** \`${p.id || p._id}\``
                 }]
             });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Not found'}`);
     }
 
     if (action === 'delete') {
@@ -271,12 +482,15 @@ async function handleProvider(message, args) {
         if (result.success) {
             return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Deleted' }] });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Failed'}`);
     }
 
     return message.reply('❌ Usage: `!provider [list|create|get|delete]`');
 }
 
+// ================================================================
+// INTEGRATIONS
+// ================================================================
 async function handleIntegration(message, args) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
 
@@ -284,25 +498,29 @@ async function handleIntegration(message, args) {
 
     if (!action || action === 'list') {
         const result = await jnkieRequest('GET', '/integrations');
-        if (result.success) {
-            const items = Array.isArray(result.data) ? result.data : [];
-            if (items.length === 0) {
-                return message.reply({ embeds: [{ color: 0xe67e22, title: '🔗 Integrations', description: 'Tidak ada integration' }] });
-            }
-            const list = items.map((i, idx) => `${idx+1}. **${i.type || i.name}**\n   ID: \`${i.id}\``).join('\n\n');
-            return message.reply({ embeds: [{ color: 0xe67e22, title: '🔗 Integrations', description: list }] });
+        
+        if (!result.success) {
+            return message.reply(`❌ Error: ${result.error || 'Unknown'}`);
         }
-        return message.reply(`❌ Error: ${result.error}`);
+
+        const items = Array.isArray(result.data) ? result.data : (result.data ? [result.data] : []);
+        
+        if (items.length === 0) {
+            return message.reply({ embeds: [{ color: 0xe67e22, title: '🔗 Integrations', description: 'Tidak ada integration' }] });
+        }
+
+        const list = items.map((i, idx) => `**${idx+1}. ${i.type || i.name || 'Unnamed'}**\nID: \`${i.id || i._id}\``).join('\n\n');
+        return message.reply({ embeds: [{ color: 0xe67e22, title: '🔗 Integrations', description: list }] });
     }
 
     if (action === 'types') {
         const result = await jnkieRequest('GET', '/integrations/types');
         if (result.success) {
             const types = Array.isArray(result.data) ? result.data : [];
-            const list = types.map(t => `• \`${t.type || t.name || t}\``).join('\n') || 'Tidak ada';
-            return message.reply({ embeds: [{ color: 0xe67e22, title: '🔗 Types', description: list }] });
+            const list = types.map(t => `• \`${typeof t === 'string' ? t : (t.type || t.name || JSON.stringify(t))}\``).join('\n') || 'Tidak ada';
+            return message.reply({ embeds: [{ color: 0xe67e22, title: '🔗 Integration Types', description: list }] });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Failed'}`);
     }
 
     if (action === 'create') {
@@ -311,10 +529,10 @@ async function handleIntegration(message, args) {
 
         const result = await jnkieRequest('POST', '/integrations', { type: type });
         if (result.success) {
-            const id = result.data?.id || 'N/A';
+            const id = result.data?.id || result.data?._id || 'N/A';
             return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Integration Created', description: `ID: \`${id}\`` }] });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Failed'}`);
     }
 
     if (action === 'get') {
@@ -328,14 +546,11 @@ async function handleIntegration(message, args) {
                 embeds: [{ 
                     color: 0xe67e22, 
                     title: '🔗 Integration', 
-                    fields: [
-                        { name: 'Type', value: i.type || 'N/A', inline: true },
-                        { name: 'ID', value: `\`${i.id}\`` || 'N/A', inline: true }
-                    ]
+                    description: `**Type:** ${i.type || 'N/A'}\n**ID:** \`${i.id || i._id}\``
                 }]
             });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Not found'}`);
     }
 
     if (action === 'delete') {
@@ -346,74 +561,76 @@ async function handleIntegration(message, args) {
         if (result.success) {
             return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Deleted' }] });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Failed'}`);
     }
 
     return message.reply('❌ Usage: `!integration [list|types|create|get|delete]`');
 }
 
+// ================================================================
+// KEYS
+// ================================================================
 async function handleKey(message, args) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
 
     const action = args[0]?.toLowerCase();
 
-    // !key list [serviceId]
     if (!action || action === 'list') {
         const serviceId = args[1] || JNKIE_SERVICE_ID;
         
-        if (!serviceId) {
+        let endpoint = '/keys?limit=15';
+        if (serviceId) endpoint += `&service_id=${serviceId}`;
+
+        const result = await jnkieRequest('GET', endpoint);
+        
+        if (!result.success) {
             return message.reply({
                 embeds: [{
                     color: 0xe74c3c,
-                    title: '❌ Service ID Required',
-                    description: '**Usage:** `!key list [serviceId]`\n\n**Atau set default:**\nTambah env `JNKIE_SERVICE_ID`\n\n**Lihat services:** `!service list`'
+                    title: '❌ Error',
+                    description: `${result.error || 'Unknown'}\n\n💡 Gunakan \`!debug\` untuk melihat raw response`
                 }]
             });
         }
 
-        const result = await jnkieRequest('GET', `/keys?service_id=${serviceId}&limit=15`);
-        if (result.success) {
-            const keys = Array.isArray(result.data) ? result.data : [];
-            if (keys.length === 0) {
-                return message.reply({ 
-                    embeds: [{ 
-                        color: 0x2ecc71, 
-                        title: '🔑 Keys', 
-                        description: `Service: \`${serviceId}\`\n\nTidak ada key. Buat dengan:\n\`!key create ${serviceId} [duration]\`` 
-                    }] 
-                });
-            }
-            const list = keys.map((k, i) => {
-                const keyStr = k.key || k.id || 'N/A';
-                return `${i+1}. \`${keyStr.substring(0, 25)}...\`\n   Status: ${k.status || 'active'} | Expires: ${k.expires_at || 'N/A'}`;
-            }).join('\n\n');
+        const keys = Array.isArray(result.data) ? result.data : (result.data ? [result.data] : []);
+        
+        if (keys.length === 0) {
             return message.reply({ 
                 embeds: [{ 
                     color: 0x2ecc71, 
                     title: '🔑 Keys', 
-                    description: `**Service:** \`${serviceId}\`\n\n${list}`,
-                    footer: { text: `Total: ${keys.length} keys` }
+                    description: `${serviceId ? `Service: \`${serviceId}\`\n\n` : ''}Tidak ada key.\n\nBuat dengan: \`!key create [serviceId] [duration]\``
                 }] 
             });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+
+        const list = keys.slice(0, 10).map((k, i) => {
+            const keyStr = k.key || k.id || k._id || 'N/A';
+            const status = k.status || 'active';
+            return `**${i+1}.** \`${keyStr.substring(0, 25)}...\`\nStatus: ${status}`;
+        }).join('\n\n');
+
+        return message.reply({ 
+            embeds: [{ 
+                color: 0x2ecc71, 
+                title: '🔑 Keys', 
+                description: `${serviceId ? `Service: \`${serviceId}\`\n\n` : ''}${list}`,
+                footer: { text: `Showing ${Math.min(10, keys.length)} of ${keys.length}` }
+            }] 
+        });
     }
 
-    // !key create [serviceId] [duration] [note]
     if (action === 'create') {
-        let serviceId, duration, note;
-        
-        // Check if first arg is serviceId or duration
-        if (args[1] && (args[1].endsWith('d') || args[1].endsWith('h') || args[1].endsWith('m'))) {
-            // !key create 7d note
+        let serviceId = args[1] || JNKIE_SERVICE_ID;
+        let duration = args[2] || '7d';
+        let note = args.slice(3).join(' ') || `By ${message.author.username}`;
+
+        // Auto-detect jika args[1] adalah duration
+        if (args[1] && /^\d+[dhm]$/.test(args[1])) {
             serviceId = JNKIE_SERVICE_ID;
             duration = args[1];
             note = args.slice(2).join(' ') || `By ${message.author.username}`;
-        } else {
-            // !key create [serviceId] [duration] [note]
-            serviceId = args[1] || JNKIE_SERVICE_ID;
-            duration = args[2] || '7d';
-            note = args.slice(3).join(' ') || `By ${message.author.username}`;
         }
 
         if (!serviceId) {
@@ -421,7 +638,7 @@ async function handleKey(message, args) {
                 embeds: [{
                     color: 0xe74c3c,
                     title: '❌ Service ID Required',
-                    description: '**Usage:** `!key create [serviceId] [duration] [note]`\n\n**Contoh:**\n`!key create abc123 7d My key`\n`!key create abc123 30d`\n\n**Lihat services:** `!service list`'
+                    description: 'Usage: `!key create [serviceId] [duration] [note]`\n\nContoh: `!key create abc123 7d My key`\n\nLihat services: `!service list`'
                 }]
             });
         }
@@ -434,7 +651,7 @@ async function handleKey(message, args) {
         });
 
         if (result.success && result.data) {
-            const key = result.data.key || result.data.id || 'N/A';
+            const key = result.data.key || result.data.id || result.data._id || 'N/A';
             await message.reply({ 
                 embeds: [{ 
                     color: 0x2ecc71, 
@@ -442,42 +659,30 @@ async function handleKey(message, args) {
                     fields: [
                         { name: '🔑 Key', value: `\`${key}\`` },
                         { name: 'Service', value: `\`${serviceId}\``, inline: true },
-                        { name: 'Duration', value: duration, inline: true },
-                        { name: 'Note', value: note }
+                        { name: 'Duration', value: duration, inline: true }
                     ]
                 }]
             });
             try { await message.author.send(`🔑 Your Key: \`${key}\``); } catch (e) {}
             return;
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Failed to create key'}`);
     }
 
-    // !key batch [serviceId] [count] [duration]
     if (action === 'batch') {
-        let serviceId, count, duration;
+        let serviceId = args[1] || JNKIE_SERVICE_ID;
+        let count = parseInt(args[2]) || 5;
+        let duration = args[3] || '7d';
 
-        // Check args
+        // Auto-detect
         if (args[1] && !isNaN(parseInt(args[1]))) {
-            // !key batch 5 7d (tanpa serviceId)
             serviceId = JNKIE_SERVICE_ID;
-            count = parseInt(args[1]) || 5;
+            count = parseInt(args[1]);
             duration = args[2] || '7d';
-        } else {
-            // !key batch [serviceId] [count] [duration]
-            serviceId = args[1] || JNKIE_SERVICE_ID;
-            count = parseInt(args[2]) || 5;
-            duration = args[3] || '7d';
         }
 
         if (!serviceId) {
-            return message.reply({
-                embeds: [{
-                    color: 0xe74c3c,
-                    title: '❌ Service ID Required',
-                    description: '**Usage:** `!key batch [serviceId] [count] [duration]`\n\n**Contoh:**\n`!key batch abc123 10 7d`'
-                }]
-            });
+            return message.reply('❌ Service ID required. Usage: `!key batch [serviceId] [count] [duration]`');
         }
 
         const result = await jnkieRequest('POST', '/keys/batch', {
@@ -488,22 +693,17 @@ async function handleKey(message, args) {
         });
 
         if (result.success) {
-            const keys = result.data?.keys || result.data || [];
-            const keyList = Array.isArray(keys) 
-                ? keys.slice(0, 10).map(k => `\`${(k.key || k).substring(0, 30)}...\``).join('\n')
-                : 'Keys created';
             return message.reply({ 
                 embeds: [{ 
                     color: 0x2ecc71, 
-                    title: `✅ ${count} Keys Created`, 
-                    description: `Service: \`${serviceId}\`\nDuration: ${duration}\n\n${keyList}${keys.length > 10 ? `\n... dan ${keys.length - 10} lagi` : ''}`
+                    title: `✅ ${count} Keys Created`,
+                    description: `Service: \`${serviceId}\`\nDuration: ${duration}`
                 }] 
             });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Failed'}`);
     }
 
-    // !key get [keyId]
     if (action === 'get') {
         const keyId = args[1];
         if (!keyId) return message.reply('❌ Usage: `!key get [keyId]`');
@@ -515,40 +715,28 @@ async function handleKey(message, args) {
                 embeds: [{ 
                     color: 0x2ecc71, 
                     title: '🔑 Key Details', 
-                    fields: [
-                        { name: 'Key', value: `\`${k.key || k.id}\`` },
-                        { name: 'Status', value: k.status || 'N/A', inline: true },
-                        { name: 'Service', value: `\`${k.service_id || 'N/A'}\``, inline: true },
-                        { name: 'Expires', value: k.expires_at || 'N/A', inline: true },
-                        { name: 'HWIDs', value: `${k.hwids?.length || 0}/${k.max_hwids || 1}`, inline: true },
-                        { name: 'Note', value: k.note || 'N/A' }
-                    ]
+                    description: `**Key:** \`${k.key || k.id || k._id}\`\n**Status:** ${k.status || 'N/A'}\n**Service:** \`${k.service_id || 'N/A'}\`\n**Expires:** ${k.expires_at || 'N/A'}\n**HWIDs:** ${k.hwids?.length || 0}/${k.max_hwids || 1}\n**Note:** ${k.note || 'N/A'}`
                 }]
             });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Not found'}`);
     }
 
-    // !key verify [key]
     if (action === 'verify') {
         const key = args[1];
         if (!key) return message.reply('❌ Usage: `!key verify [key]`');
 
         const result = await jnkieRequest('GET', `/keys?key=${encodeURIComponent(key)}`);
-        if (result.success && result.data) {
+        if (result.success) {
             const keys = Array.isArray(result.data) ? result.data : [result.data];
-            if (keys.length > 0 && keys[0].key) {
+            if (keys.length > 0 && keys[0]) {
                 const k = keys[0];
                 const valid = k.status === 'active';
                 return message.reply({ 
                     embeds: [{ 
                         color: valid ? 0x2ecc71 : 0xe74c3c, 
                         title: valid ? '✅ Key Valid' : '❌ Key Invalid',
-                        fields: [
-                            { name: 'Status', value: k.status || 'N/A', inline: true },
-                            { name: 'Expires', value: k.expires_at || 'N/A', inline: true },
-                            { name: 'Service', value: `\`${k.service_id || 'N/A'}\``, inline: true }
-                        ]
+                        description: `**Status:** ${k.status || 'N/A'}\n**Expires:** ${k.expires_at || 'N/A'}`
                     }]
                 });
             }
@@ -556,7 +744,6 @@ async function handleKey(message, args) {
         return message.reply({ embeds: [{ color: 0xe74c3c, title: '❌ Key Not Found' }] });
     }
 
-    // !key reset [keyId]
     if (action === 'reset') {
         const keyId = args[1];
         if (!keyId) return message.reply('❌ Usage: `!key reset [keyId]`');
@@ -565,10 +752,9 @@ async function handleKey(message, args) {
         if (result.success) {
             return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ HWID Reset' }] });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Failed'}`);
     }
 
-    // !key delete [keyId]
     if (action === 'delete') {
         const keyId = args[1];
         if (!keyId) return message.reply('❌ Usage: `!key delete [keyId]`');
@@ -577,10 +763,9 @@ async function handleKey(message, args) {
         if (result.success) {
             return message.reply({ embeds: [{ color: 0x2ecc71, title: '✅ Key Deleted' }] });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Failed'}`);
     }
 
-    // !key bulk-delete [key1,key2,...]
     if (action === 'bulk-delete') {
         const keysStr = args[1];
         if (!keysStr) return message.reply('❌ Usage: `!key bulk-delete [k1,k2,...]`');
@@ -590,42 +775,34 @@ async function handleKey(message, args) {
         if (result.success) {
             return message.reply({ embeds: [{ color: 0x2ecc71, title: `✅ ${keys.length} Keys Deleted` }] });
         }
-        return message.reply(`❌ Error: ${result.error}`);
+        return message.reply(`❌ Error: ${result.error || 'Failed'}`);
     }
 
     return message.reply({
         embeds: [{
             color: 0x2ecc71,
             title: '🔑 Key Commands',
-            fields: [
-                { name: 'List', value: '`!key list [serviceId]`' },
-                { name: 'Create', value: '`!key create [serviceId] [duration] [note]`' },
-                { name: 'Batch', value: '`!key batch [serviceId] [count] [duration]`' },
-                { name: 'Get', value: '`!key get [keyId]`' },
-                { name: 'Verify', value: '`!key verify [key]`' },
-                { name: 'Reset', value: '`!key reset [keyId]`' },
-                { name: 'Delete', value: '`!key delete [keyId]`' },
-                { name: 'Bulk Delete', value: '`!key bulk-delete [k1,k2]`' }
-            ]
+            description: '`!key list [serviceId]`\n`!key create [serviceId] [duration]`\n`!key batch [serviceId] [count] [duration]`\n`!key get [keyId]`\n`!key verify [key]`\n`!key reset [keyId]`\n`!key delete [keyId]`'
         }]
     });
 }
 
+// ================================================================
+// STATUS & HELP
+// ================================================================
 async function handleStatus(message) {
     const fields = [
         { name: 'API Key', value: JNKIE_API_KEY ? '✅ Set' : '❌ Not Set', inline: true },
         { name: 'Default Service', value: JNKIE_SERVICE_ID ? `\`${JNKIE_SERVICE_ID}\`` : '❌ Not Set', inline: true }
     ];
 
-    // Test API connection
     if (JNKIE_API_KEY) {
         const result = await jnkieRequest('GET', '/services');
-        fields.push({ name: 'API Status', value: result.success ? '✅ Connected' : '❌ Error', inline: true });
-        
-        if (result.success) {
-            const services = Array.isArray(result.data) ? result.data : [];
-            fields.push({ name: 'Total Services', value: `${services.length}`, inline: true });
-        }
+        fields.push({ 
+            name: 'API Connection', 
+            value: result.success ? '✅ Connected' : `❌ Error: ${result.error}`, 
+            inline: true 
+        });
     }
 
     await message.reply({
@@ -633,6 +810,7 @@ async function handleStatus(message) {
             color: 0x3498db,
             title: '📊 Status',
             fields: fields,
+            footer: { text: 'Gunakan !debug untuk test semua endpoints' },
             timestamp: new Date()
         }]
     });
@@ -645,13 +823,12 @@ async function handleHelp(message) {
             title: '📖 Commands',
             fields: [
                 { name: '🔧 Obfuscator', value: '`!obf [preset]` + file\n`!presets`' },
-                { name: '📦 Services', value: '`!service list`\n`!service create [name] [desc]`\n`!service get [id]`\n`!service delete [id]`' },
+                { name: '📦 Services', value: '`!service [list|create|get|delete]`' },
                 { name: '🔌 Providers', value: '`!provider [list|create|get|delete]`' },
                 { name: '🔗 Integrations', value: '`!integration [list|types|create|get|delete]`' },
-                { name: '🔑 Keys', value: '`!key list [serviceId]`\n`!key create [serviceId] [duration]`\n`!key batch [serviceId] [count] [duration]`\n`!key get/verify/reset/delete [id]`' },
-                { name: '📊 Status', value: '`!status` - Cek koneksi API' }
-            ],
-            footer: { text: 'Gunakan !service list untuk melihat Service ID' }
+                { name: '🔑 Keys', value: '`!key [list|create|batch|get|verify|reset|delete]`' },
+                { name: '🔍 Debug', value: '`!debug` - Test semua API endpoints\n`!status` - Cek koneksi' }
+            ]
         }]
     });
 }
@@ -670,49 +847,9 @@ async function handlePresets(message) {
     });
 }
 
-function jnkieRequest(method, endpoint, body = null) {
-    return new Promise((resolve) => {
-        const postData = body ? JSON.stringify(body) : '';
-        
-        const options = {
-            hostname: 'api.jnkie.com',
-            port: 443,
-            path: `/api/v2${endpoint}`,
-            method: method,
-            headers: {
-                'Authorization': `Bearer ${JNKIE_API_KEY}`,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            }
-        };
-
-        if (body) options.headers['Content-Length'] = Buffer.byteLength(postData);
-
-        const req = https.request(options, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-                try {
-                    const json = JSON.parse(data);
-                    resolve({ 
-                        success: res.statusCode >= 200 && res.statusCode < 300, 
-                        data: json.data || json, 
-                        error: json.message || json.error 
-                    });
-                } catch (e) {
-                    resolve({ success: false, error: 'Invalid response' });
-                }
-            });
-        });
-
-        req.on('error', (e) => resolve({ success: false, error: e.message }));
-        req.setTimeout(30000, () => { req.destroy(); resolve({ success: false, error: 'Timeout' }); });
-
-        if (body) req.write(postData);
-        req.end();
-    });
-}
-
+// ================================================================
+// HELPERS
+// ================================================================
 function downloadFile(url) {
     return new Promise((resolve, reject) => {
         const makeRequest = (targetUrl, redirects = 0) => {
