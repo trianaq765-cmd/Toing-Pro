@@ -1,13 +1,9 @@
 {
-  "name": "prometheus-bot",
+  "name": "obfuscator-bot",
   "version": "1.0.0",
-  "description": "Discord Lua Obfuscator Bot using Prometheus",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
-  },
-  "engines": {
-    "node": ">=18.0.0"
   },
   "dependencies": {
     "discord.js": "14.14.1"
