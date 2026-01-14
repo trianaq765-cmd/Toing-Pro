@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 
-// Dummy server untuk Render (GRATIS)
+// Dummy server untuk Render
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -43,7 +43,7 @@ client.on('messageCreate', async (message) => {
         }
 
         try {
-            await message.reply('⏳ Sedang memproses obfuscation...');
+            const statusMsg = await message.reply('⏳ Sedang memproses obfuscation...');
 
             const response = await fetch(attachment.url);
             const luaCode = await response.text();
@@ -53,37 +53,62 @@ client.on('messageCreate', async (message) => {
             
             fs.writeFileSync(inputPath, luaCode);
 
-            const command = `lua5.1 /app/Prometheus-master/cli.lua --preset Medium ${inputPath} --out ${outputPath}`;
+            // FIX: Path yang benar ke Prometheus CLI
+            const command = `cd /app/Prometheus-master && lua5.1 cli.lua --preset Medium ${inputPath} --out ${outputPath}`;
             
-            exec(command, (error, stdout, stderr) => {
+            exec(command, async (error, stdout, stderr) => {
+                // Debug log
+                console.log('stdout:', stdout);
+                console.log('stderr:', stderr);
+                
                 if (error) {
-                    console.error(error);
-                    return message.reply('❌ Gagal obfuscate: ' + error.message);
+                    console.error('Error:', error);
+                    await statusMsg.edit(`❌ Gagal obfuscate:\n\`\`\`${error.message}\`\`\``);
+                    
+                    // Cleanup
+                    if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+                    return;
+                }
+
+                // Check if output file exists
+                if (!fs.existsSync(outputPath)) {
+                    await statusMsg.edit('❌ File output tidak terbuat. Coba preset lain.');
+                    if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+                    return;
                 }
 
                 const obfuscatedFile = new AttachmentBuilder(outputPath, { 
                     name: 'obfuscated.lua' 
                 });
                 
-                message.reply({ 
+                await statusMsg.edit({ 
                     content: '✅ Berhasil di-obfuscate!', 
                     files: [obfuscatedFile] 
                 });
 
-                fs.unlinkSync(inputPath);
-                fs.unlinkSync(outputPath);
+                // Cleanup
+                if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+                if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
             });
 
         } catch (err) {
-            console.error(err);
-            message.reply('❌ Terjadi error: ' + err.message);
+            console.error('Catch error:', err);
+            await message.reply('❌ Terjadi error: ' + err.message);
         }
+    }
+
+    // Command test
+    if (message.content === '!test') {
+        exec('ls -la /app/Prometheus-master/', (error, stdout, stderr) => {
+            message.reply(`\`\`\`${stdout || stderr || error}\`\`\``);
+        });
     }
 
     if (message.content === '!help') {
         message.reply(`
 **📖 Prometheus Bot Commands**
 \`!obfuscate\` + attach file.lua → Obfuscate script Lua
+\`!test\` → Test Prometheus installation
 \`!help\` → Tampilkan bantuan
         `);
     }
