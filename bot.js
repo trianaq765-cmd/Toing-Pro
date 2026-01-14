@@ -25,7 +25,7 @@ const client = new Client({
 const TOKEN = process.env.DISCORD_TOKEN;
 const PROMETHEUS_PATH = process.env.PROMETHEUS_PATH || '/app/prometheus';
 const JNKIE_API_KEY = process.env.JNKIE_API_KEY;
-const JNKIE_SERVICE_ID = process.env.JNKIE_SERVICE_ID || '4532'; // 🔧 Default ke 4532
+const JNKIE_SERVICE_ID = '4532';
 
 if (!TOKEN) {
     console.error('TOKEN NOT FOUND');
@@ -42,7 +42,6 @@ const PRESETS = {
 
 client.on('ready', () => {
     console.log(`Bot ${client.user.tag} online`);
-    console.log(`jnkie API: ${JNKIE_API_KEY ? 'Configured' : 'NOT SET'}`);
     console.log(`Service ID: ${JNKIE_SERVICE_ID}`);
 });
 
@@ -58,6 +57,8 @@ client.on('messageCreate', async (message) => {
         else if (cmd === '!presets') await handlePresets(message);
         else if (cmd === '!scan') await handleScan(message, args);
         else if (cmd === '!debug') await handleDebug(message);
+        else if (cmd === '!explore') await handleExplore(message, args);
+        else if (cmd === '!info') await handleInfo(message, args);
         else if (cmd === '!status') await handleStatus(message);
         else if (cmd === '!help') await handleHelp(message);
         else if (cmd === '!service') await handleService(message, args);
@@ -69,185 +70,299 @@ client.on('messageCreate', async (message) => {
 });
 
 // ================================================================
-// 🕵️ SUPER SCANNER (!scan) - FIXED dengan User ID 4532
+// 🔍 EXPLORE ENDPOINT (!explore) - Lihat isi response
+// ================================================================
+async function handleExplore(message, args) {
+    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
+
+    const endpoint = args[0] || '/services/4532';
+    const method = (args[1] || 'GET').toUpperCase();
+    
+    const statusMsg = await message.reply(`🔍 Exploring \`${endpoint}\` with ${method}...`);
+
+    const res = await jnkieRequest(method, endpoint);
+    
+    let output = '';
+    if (res.success) {
+        // Format JSON dengan indentasi
+        const jsonStr = JSON.stringify(res.data, null, 2);
+        output = `✅ **Status: ${res.statusCode}**\n\`\`\`json\n${jsonStr.substring(0, 1800)}\n\`\`\``;
+        
+        // Jika response terlalu panjang
+        if (jsonStr.length > 1800) {
+            output += `\n⚠️ Response terpotong (${jsonStr.length} chars)`;
+        }
+    } else {
+        output = `❌ **Status: ${res.statusCode}**\nError: ${res.error}`;
+    }
+
+    await statusMsg.edit(output);
+}
+
+// ================================================================
+// 📊 INFO - Lihat detail semua endpoint aktif
+// ================================================================
+async function handleInfo(message, args) {
+    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
+
+    const target = args[0] || 'all';
+    const statusMsg = await message.reply(`📊 Fetching info...`);
+
+    let embed = {
+        title: '📊 API Information',
+        color: 0x3498db,
+        fields: [],
+        timestamp: new Date()
+    };
+
+    // Fetch semua endpoint aktif
+    if (target === 'all' || target === 'services') {
+        const res = await jnkieRequest('GET', '/services');
+        if (res.success && Array.isArray(res.data)) {
+            embed.fields.push({
+                name: '📦 Services',
+                value: res.data.slice(0, 10).map(s => `• \`${s.id}\` - ${s.name || 'Unnamed'}`).join('\n') || 'Empty',
+                inline: false
+            });
+        }
+    }
+
+    if (target === 'all' || target === 'keys') {
+        const res = await jnkieRequest('GET', '/keys');
+        if (res.success && Array.isArray(res.data)) {
+            embed.fields.push({
+                name: '🔑 Keys',
+                value: res.data.slice(0, 10).map(k => `• \`${k.key?.substring(0, 20) || k.id}...\``).join('\n') || 'Empty',
+                inline: false
+            });
+        }
+    }
+
+    if (target === 'all' || target === 'providers') {
+        const res = await jnkieRequest('GET', '/providers');
+        if (res.success && Array.isArray(res.data)) {
+            embed.fields.push({
+                name: '🏢 Providers',
+                value: res.data.slice(0, 10).map(p => `• \`${p.id}\` - ${p.name || 'Unnamed'}`).join('\n') || 'Empty',
+                inline: false
+            });
+        }
+    }
+
+    if (target === 'all' || target === 'service') {
+        const res = await jnkieRequest('GET', `/services/${JNKIE_SERVICE_ID}`);
+        if (res.success) {
+            const s = res.data;
+            embed.fields.push({
+                name: `📦 Service #${JNKIE_SERVICE_ID}`,
+                value: `\`\`\`json\n${JSON.stringify(s, null, 2).substring(0, 900)}\n\`\`\``,
+                inline: false
+            });
+        }
+    }
+
+    if (embed.fields.length === 0) {
+        embed.description = '❌ No data found';
+    }
+
+    await statusMsg.edit({ content: null, embeds: [embed] });
+}
+
+// ================================================================
+// 🕵️ SMART SCAN - Berdasarkan endpoint yang sudah diketahui aktif
 // ================================================================
 async function handleScan(message, args) {
     if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
 
-    // 🔧 Parse arguments: !scan [filter] [userId]
-    // Contoh: !scan script 4532
-    let filter = null;
-    let userId = '4532'; // ✅ Default User ID
+    const filter = args[0] ? args[0].toLowerCase() : null;
+    const statusMsg = await message.reply(`🕵️ **Smart Scanning...**\n🔍 Filter: ${filter || 'Full'}`);
 
-    if (args.length >= 1) {
-        // Cek apakah arg pertama adalah number (userId) atau string (filter)
-        if (/^\d+$/.test(args[0])) {
-            userId = args[0];
-        } else {
-            filter = args[0].toLowerCase();
-        }
-    }
-    if (args.length >= 2) {
-        if (/^\d+$/.test(args[1])) {
-            userId = args[1];
-        }
-    }
+    // Endpoint yang sudah TERBUKTI aktif sebagai base
+    const activeRoots = [
+        '/services',
+        '/providers', 
+        '/integrations',
+        '/keys',
+        `/services/${JNKIE_SERVICE_ID}`
+    ];
 
-    const statusMsg = await message.reply(`🕵️ **Scanning API Endpoints...**\n📌 User ID: \`${userId}\`\n🔍 Filter: ${filter || 'Full Scan'}`);
-
-    // Daftar endpoint keywords
-    const keywords = [
-        // Core
-        'script', 'scripts', 'loader', 'loaders', 'loadstring',
-        'obfuscate', 'obfuscator', 'obfuscation', 'protect', 'protection',
-        'upload', 'download', 'file', 'files', 'asset', 'assets',
-        'project', 'projects', 'app', 'apps', 'application', 'applications',
-        'product', 'products', 'item', 'items',
-        
-        // Config & Settings
-        'config', 'configs', 'setting', 'settings', 'option', 'options',
-        'variable', 'variables', 'var', 'vars', 'env', 'environment',
-        'secret', 'secrets', 'key', 'keys', 'license', 'licenses',
-        
-        // User & Auth
-        'user', 'users', 'me', 'profile', 'account', 'auth', 'login',
-        'session', 'sessions', 'token', 'tokens',
-        
-        // System
-        'log', 'logs', 'analytic', 'analytics', 'stat', 'stats',
-        'version', 'versions', 'update', 'updates', 'build', 'builds',
-        'webhook', 'webhooks', 'integration', 'integrations',
-        
-        // Specific
-        'whitelist', 'blacklist', 'hwid', 'hwids', 'ip', 'ips',
-        'execute', 'executor', 'execution', 'run', 'runner',
-        'compile', 'compiler', 'build', 'builder',
-        'luraph', 'ironbrew', 'psu', 'synapse', 'xen',
-        
-        // Additional common endpoints
-        'data', 'info', 'details', 'list', 'create', 'delete',
-        'export', 'import', 'backup', 'restore', 'status'
+    // Sub-path yang umum di API
+    const subPaths = [
+        '', // root endpoint itu sendiri
+        '/list',
+        '/all',
+        '/create',
+        '/new',
+        '/delete',
+        '/update',
+        '/edit',
+        '/get',
+        '/fetch',
+        '/keys',
+        '/key',
+        '/licenses',
+        '/license',
+        '/users',
+        '/user',
+        '/hwid',
+        '/hwids',
+        '/whitelist',
+        '/blacklist',
+        '/stats',
+        '/analytics',
+        '/logs',
+        '/log',
+        '/settings',
+        '/config',
+        '/webhooks',
+        '/webhook',
+        '/variables',
+        '/variable',
+        '/scripts',
+        '/script',
+        '/loader',
+        '/execute',
+        '/validate',
+        '/verify',
+        '/check',
+        '/reset',
+        '/revoke',
+        '/generate',
+        '/export',
+        '/import',
+        '/ban',
+        '/unban',
+        '/expire',
+        '/extend',
+        '/transfer',
+        '/info',
+        '/details',
+        '/meta',
+        '/metadata'
     ];
 
     let targets = [];
 
-    // ✅ Generate dengan User ID yang benar (4532)
-    keywords.forEach(w => {
-        // Root endpoints
-        targets.push(`/${w}`);
-        targets.push(`/v1/${w}`);
-        targets.push(`/api/${w}`);
-        
-        // ✅ Nested dengan User ID 4532
-        targets.push(`/services/${userId}/${w}`);
-        targets.push(`/service/${userId}/${w}`);
-        targets.push(`/users/${userId}/${w}`);
-        targets.push(`/user/${userId}/${w}`);
-        targets.push(`/projects/${userId}/${w}`);
-        targets.push(`/project/${userId}/${w}`);
-        
-        // Plural check
-        if (!w.endsWith('s')) {
-            targets.push(`/${w}s`);
-            targets.push(`/services/${userId}/${w}s`);
-        }
+    // Generate dari root yang aktif
+    activeRoots.forEach(root => {
+        subPaths.forEach(sub => {
+            targets.push(`${root}${sub}`);
+        });
     });
 
-    // Filter list jika ada
+    // Filter jika ada
     if (filter) {
-        targets = targets.filter(t => t.includes(filter));
+        targets = targets.filter(t => t.toLowerCase().includes(filter));
     }
 
-    // Hapus duplikat
     targets = [...new Set(targets)];
 
-    // Scan process
-    const batchSize = 15; // Lebih kecil untuk akurasi
+    const batchSize = 10;
     let found = [];
     
     for (let i = 0; i < targets.length; i += batchSize) {
         const batch = targets.slice(i, i + batchSize);
         const progress = Math.round((i / targets.length) * 100);
         
-        await statusMsg.edit(`🕵️ **Scanning...**\n📌 User ID: \`${userId}\`\n📊 Progress: ${progress}% | Found: ${found.length}`);
+        await statusMsg.edit(`🕵️ **Scanning...**\n📊 Progress: ${progress}% | Found: ${found.length}`);
 
         const promises = batch.map(path => jnkieRequest('GET', path).then(res => ({ path, ...res })));
         const results = await Promise.all(promises);
 
         results.forEach(res => {
-            // ✅ Hanya exclude 404 (Not Found)
             if (res.statusCode !== 404 && res.statusCode !== 0) {
                 found.push({
                     path: res.path,
                     status: res.statusCode,
-                    method: 'GET'
+                    hasData: res.success && res.data
                 });
             }
         });
         
-        // Delay untuk menghindari rate limit
         await new Promise(r => setTimeout(r, 300));
     }
 
-    // ✅ Scan ulang endpoint yang ditemukan dengan POST method
-    const tryPostEndpoints = found.filter(f => f.status === 405); // Method Not Allowed
-    if (tryPostEndpoints.length > 0) {
-        await statusMsg.edit(`🕵️ **Trying POST method on ${tryPostEndpoints.length} endpoints...**`);
-        
-        for (const ep of tryPostEndpoints) {
-            const postRes = await jnkieRequest('POST', ep.path, {});
-            if (postRes.statusCode !== 404 && postRes.statusCode !== 405) {
-                ep.postStatus = postRes.statusCode;
-                ep.method = 'POST';
-            }
-            await new Promise(r => setTimeout(r, 200));
-        }
-    }
-
     if (found.length === 0) {
-        await statusMsg.edit(`❌ **Scan Selesai**\n📌 User ID: \`${userId}\`\nTidak ada endpoint yang ditemukan.`);
-    } else {
-        // Sort: 200 first, then by status code
-        found.sort((a, b) => {
-            if (a.status >= 200 && a.status < 300) return -1;
-            if (b.status >= 200 && b.status < 300) return 1;
-            return a.status - b.status;
-        });
-
-        const list = found.map(f => {
-            let icon = '❓';
-            let note = '';
-            
-            if (f.status >= 200 && f.status < 300) { icon = '✅'; note = 'Active'; }
-            else if (f.status === 401) { icon = '🔒'; note = 'Auth Required'; }
-            else if (f.status === 403) { icon = '🚫'; note = 'Forbidden'; }
-            else if (f.status === 405) { icon = '✋'; note = f.postStatus ? `POST: ${f.postStatus}` : 'Try POST'; }
-            else if (f.status === 408) { icon = '⏱️'; note = 'Timeout'; }
-            else if (f.status === 429) { icon = '🐌'; note = 'Rate Limited'; }
-            else if (f.status >= 500) { icon = '🔥'; note = 'Server Error'; }
-            else if (f.status === 523) { icon = '☁️'; note = 'Origin Unreachable'; }
-            
-            return `${icon} \`${f.path}\` (${f.status}) ${note}`;
-        }).join('\n');
-
-        // Split jika terlalu panjang
-        const chunks = list.match(/[\s\S]{1,3900}/g) || [list];
-
-        await statusMsg.edit({
-            content: null,
-            embeds: [{
-                color: 0x2ecc71,
-                title: '🕵️ Scan Results',
-                description: chunks[0],
-                fields: [
-                    { name: '📌 User ID', value: `\`${userId}\``, inline: true },
-                    { name: '📊 Stats', value: `Scanned: ${targets.length}\nFound: ${found.length}`, inline: true }
-                ],
-                footer: { text: 'Use !scan [filter] [userId] untuk scan spesifik' },
-                timestamp: new Date()
-            }]
-        });
+        await statusMsg.edit(`❌ **Scan Selesai**\nTidak ada endpoint ditemukan.`);
+        return;
     }
+
+    // Sort: 200 first
+    found.sort((a, b) => {
+        if (a.status >= 200 && a.status < 300) return -1;
+        if (b.status >= 200 && b.status < 300) return 1;
+        return a.status - b.status;
+    });
+
+    const list = found.map(f => {
+        let icon = '❓';
+        let note = '';
+        
+        if (f.status >= 200 && f.status < 300) { icon = '✅'; note = f.hasData ? 'Has Data' : 'OK'; }
+        else if (f.status === 400) { icon = '⚠️'; note = 'Bad Request'; }
+        else if (f.status === 401) { icon = '🔒'; note = 'Auth Required'; }
+        else if (f.status === 403) { icon = '🚫'; note = 'Forbidden'; }
+        else if (f.status === 405) { icon = '✋'; note = 'Wrong Method'; }
+        else if (f.status === 408) { icon = '⏱️'; note = 'Timeout'; }
+        else if (f.status === 429) { icon = '🐌'; note = 'Rate Limited'; }
+        else if (f.status >= 500) { icon = '🔥'; note = 'Server Error'; }
+        
+        return `${icon} \`${f.path}\` (${f.status}) ${note}`;
+    }).join('\n');
+
+    await statusMsg.edit({
+        content: null,
+        embeds: [{
+            color: 0x2ecc71,
+            title: '🕵️ Smart Scan Results',
+            description: list.substring(0, 4000),
+            footer: { text: `Scanned: ${targets.length} | Found: ${found.length}` },
+            timestamp: new Date()
+        }]
+    });
+}
+
+// ================================================================
+// DEBUG - Quick check
+// ================================================================
+async function handleDebug(message) {
+    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
+    
+    const statusMsg = await message.reply(`🔍 Quick Debug...`);
+    
+    const endpoints = [
+        '/services',
+        '/providers',
+        '/integrations', 
+        '/keys',
+        '/me',
+        '/user',
+        `/services/${JNKIE_SERVICE_ID}`,
+        `/users/${JNKIE_SERVICE_ID}`,
+        `/services/${JNKIE_SERVICE_ID}/scripts`,
+        `/services/${JNKIE_SERVICE_ID}/config`,
+        `/services/${JNKIE_SERVICE_ID}/keys`,
+        `/services/${JNKIE_SERVICE_ID}/licenses`,
+        `/services/${JNKIE_SERVICE_ID}/users`,
+        `/services/${JNKIE_SERVICE_ID}/whitelist`,
+        `/services/${JNKIE_SERVICE_ID}/stats`
+    ];
+
+    let resultTxt = '';
+    for (const ep of endpoints) {
+        const res = await jnkieRequest('GET', ep);
+        const icon = res.success ? '✅' : (res.statusCode === 404 ? '❌' : '⚠️');
+        resultTxt += `${icon} \`${ep}\` (${res.statusCode})\n`;
+    }
+
+    await statusMsg.edit({
+        embeds: [{
+            title: `🔍 Debug - Service #${JNKIE_SERVICE_ID}`,
+            description: resultTxt,
+            color: 0x3498db,
+            footer: { text: 'Use !explore [endpoint] untuk lihat isi' }
+        }]
+    });
 }
 
 // ================================================================
@@ -284,7 +399,7 @@ function jnkieRequest(method, endpoint, body = null) {
                         statusCode: res.statusCode
                     });
                 } catch (e) {
-                    resolve({ success: false, error: 'Invalid JSON', statusCode: res.statusCode });
+                    resolve({ success: false, error: 'Invalid JSON', rawData: data, statusCode: res.statusCode });
                 }
             });
         });
@@ -298,46 +413,7 @@ function jnkieRequest(method, endpoint, body = null) {
 }
 
 // ================================================================
-// DEBUG (!debug) - Fixed dengan User ID 4532
-// ================================================================
-async function handleDebug(message) {
-    if (!JNKIE_API_KEY) return message.reply('❌ API Key belum di-set');
-    const userId = '4532'; // ✅ Fixed User ID
-    
-    const statusMsg = await message.reply(`🔍 Checking endpoints for User ID: \`${userId}\``);
-    
-    const endpoints = [
-        '/services', 
-        '/providers', 
-        '/integrations',
-        '/keys',
-        '/me',
-        '/user',
-        `/services/${userId}`,
-        `/users/${userId}`,
-        `/services/${userId}/scripts`,
-        `/services/${userId}/config`
-    ];
-
-    let resultTxt = '';
-    for (const ep of endpoints) {
-        const res = await jnkieRequest('GET', ep);
-        const icon = res.success ? '✅' : (res.statusCode === 404 ? '❌' : '⚠️');
-        resultTxt += `${icon} \`${ep}\` (${res.statusCode})\n`;
-    }
-
-    await statusMsg.edit({
-        embeds: [{
-            title: '🔍 API Debug',
-            description: resultTxt,
-            fields: [{ name: '📌 User ID', value: `\`${userId}\``, inline: true }],
-            color: 0x3498db
-        }]
-    });
-}
-
-// ================================================================
-// OBFUSCATOR (PROMETHEUS)
+// OBFUSCATOR
 // ================================================================
 async function handleObfuscate(message) {
     if (message.attachments.size === 0) return message.reply('❌ Attach file');
@@ -363,7 +439,7 @@ async function handleObfuscate(message) {
             const file = new AttachmentBuilder(Buffer.from(finalCode), { name: `protected_${attachment.name}` });
             await msg.edit({ content: '✅ Success', files: [file] });
         } else {
-            await msg.edit('❌ Failed to generate output');
+            await msg.edit('❌ Failed');
         }
     } catch (err) {
         message.reply(`❌ Error: ${err.message}`);
@@ -378,16 +454,31 @@ async function handleObfuscate(message) {
 async function handleService(message, args) {
     if (args[0] === 'list') {
         const res = await jnkieRequest('GET', '/services');
-        const list = (Array.isArray(res.data) ? res.data : []).map(s => `• ${s.name} (\`${s.id}\`)`).join('\n') || 'No services';
+        const list = (Array.isArray(res.data) ? res.data : [])
+            .map(s => `• \`${s.id}\` - ${s.name || 'Unnamed'}`)
+            .join('\n') || 'No services';
         return message.reply({ embeds: [{ title: '📦 Services', description: list, color: 0x3498db }] });
     }
-    message.reply('Usage: `!service list`');
+    
+    if (args[0] === 'info') {
+        const id = args[1] || JNKIE_SERVICE_ID;
+        const res = await jnkieRequest('GET', `/services/${id}`);
+        if (res.success) {
+            return message.reply(`\`\`\`json\n${JSON.stringify(res.data, null, 2).substring(0, 1900)}\n\`\`\``);
+        }
+        return message.reply(`❌ Service not found: ${res.statusCode}`);
+    }
+    
+    message.reply('Usage: `!service list` | `!service info [id]`');
 }
 
 async function handleKey(message, args) {
     if (args[0] === 'list') {
-        const res = await jnkieRequest('GET', '/keys?limit=10');
-        const list = (Array.isArray(res.data) ? res.data : []).map(k => `• \`${k.key || k.id}\``).join('\n') || 'No keys';
+        const res = await jnkieRequest('GET', '/keys');
+        const list = (Array.isArray(res.data) ? res.data : [])
+            .slice(0, 15)
+            .map(k => `• \`${(k.key || k.id || 'unknown').substring(0, 30)}...\``)
+            .join('\n') || 'No keys';
         return message.reply({ embeds: [{ title: '🔑 Keys', description: list, color: 0x2ecc71 }] });
     }
     message.reply('Usage: `!key list`');
@@ -399,11 +490,28 @@ async function handleHelp(message) {
             title: '📖 Bot Commands',
             color: 0x9b59b6,
             fields: [
-                { name: '🕵️ Scanner', value: '`!scan` - Scan dengan User ID 4532\n`!scan script` - Scan filter "script"\n`!scan script 1234` - Scan dengan custom User ID' },
-                { name: '🔧 Obfuscator', value: '`!obf [preset]` + attach file\nPresets: minify, weak, medium' },
-                { name: '📦 Management', value: '`!service list`\n`!key list`\n`!debug`' }
+                { 
+                    name: '🔍 Explorer', 
+                    value: '`!explore [endpoint]` - Lihat isi endpoint\n`!explore /services/4532`\n`!info` - Lihat semua info',
+                    inline: false 
+                },
+                { 
+                    name: '🕵️ Scanner', 
+                    value: '`!scan` - Smart scan\n`!scan keys` - Scan filter\n`!debug` - Quick debug',
+                    inline: false 
+                },
+                { 
+                    name: '🔧 Obfuscator', 
+                    value: '`!obf [preset]` + file',
+                    inline: false 
+                },
+                { 
+                    name: '📦 Management', 
+                    value: '`!service list`\n`!service info [id]`\n`!key list`',
+                    inline: false 
+                }
             ],
-            footer: { text: 'Default User ID: 4532' }
+            footer: { text: `Service ID: ${JNKIE_SERVICE_ID}` }
         }]
     });
 }
@@ -413,7 +521,7 @@ async function handlePresets(message) {
 }
 
 function handleStatus(message) {
-    message.reply(`Bot Online ✅\nDefault User ID: \`4532\``);
+    message.reply(`✅ Bot Online\n📦 Service: \`${JNKIE_SERVICE_ID}\`\n🔑 API: ${JNKIE_API_KEY ? 'Set' : 'Not Set'}`);
 }
 
 // ================================================================
