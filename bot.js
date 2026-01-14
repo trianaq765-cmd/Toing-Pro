@@ -30,17 +30,7 @@ if (!TOKEN) {
     process.exit(1);
 }
 
-const HEADER = `--[[
-    ╔══════════════════════════════════════════════════════════════╗
-    ║                                                              ║
-    ║   This script was protected using Prometheus Obfuscator      ║
-    ║                                                              ║
-    ║   Discord: https://discord.gg/QarfX8ua2                      ║
-    ║                                                              ║
-    ║   ⚠️ Deobfuscation/Cracking is strictly prohibited           ║
-    ║                                                              ║
-    ╚══════════════════════════════════════════════════════════════╝
-]]--
+const HEADER = `-- This file was protected using Prometheus Obfuscator [https://discord.gg/QarfX8ua2]
 
 `;
 
@@ -74,7 +64,15 @@ const PRESETS = {
         name: 'Maximum',
         value: 'Max',
         emoji: '💀',
-        custom: true
+        custom: true,
+        steps: ['Strong', 'Vm']
+    },
+    custom: {
+        name: 'Custom (Roblox)',
+        value: 'Custom',
+        emoji: '⚡',
+        custom: true,
+        steps: ['Minify', 'Weak', 'Medium', 'Strong']
     }
 };
 
@@ -88,7 +86,7 @@ client.on('messageCreate', async (message) => {
     const content = message.content.toLowerCase().trim();
 
     try {
-        if (message.content.startsWith('!obfuscate')) {
+        if (message.content.startsWith('!obf')) {
             await handleObfuscate(message);
         } else if (content === '!help') {
             await handleHelp(message);
@@ -113,17 +111,14 @@ async function handleObfuscate(message) {
                 fields: [
                     {
                         name: 'Format',
-                        value: '`!obfuscate [preset]` + attach file'
+                        value: '`!obf [preset]` + attach file'
                     },
                     {
                         name: 'Presets',
                         value: 
-                            '🟢 `minify`\n' +
-                            '🔵 `weak`\n' +
-                            '🟡 `medium`\n' +
-                            '🟠 `strong`\n' +
-                            '🔴 `vm`\n' +
-                            '💀 `max`'
+                            '🟢 `minify` 🔵 `weak` 🟡 `medium`\n' +
+                            '🟠 `strong` 🔴 `vm` 💀 `max`\n' +
+                            '⚡ `custom` (Roblox)'
                     }
                 ]
             }]
@@ -162,7 +157,11 @@ async function handleObfuscate(message) {
     const timestamp = Date.now();
     const inputPath = path.join(PROMETHEUS_PATH, `temp_${timestamp}_input.lua`);
     const outputPath = path.join(PROMETHEUS_PATH, `temp_${timestamp}_output.lua`);
-    const tempPath = path.join(PROMETHEUS_PATH, `temp_${timestamp}_temp.lua`);
+    const tempPaths = [];
+
+    for (let i = 0; i < 5; i++) {
+        tempPaths.push(path.join(PROMETHEUS_PATH, `temp_${timestamp}_step${i}.lua`));
+    }
 
     let statusMsg;
 
@@ -197,32 +196,43 @@ async function handleObfuscate(message) {
         let usedPreset = preset.name;
         let errorOutput = '';
 
-        if (preset.custom && presetKey === 'max') {
+        if (preset.custom && preset.steps) {
             try {
-                const step1 = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Strong "${inputPath}" --out "${tempPath}" 2>&1`;
-                await execAsync(step1, { timeout: 120000 });
+                let currentInput = inputPath;
+                let currentOutput;
+                
+                for (let i = 0; i < preset.steps.length; i++) {
+                    const step = preset.steps[i];
+                    currentOutput = (i === preset.steps.length - 1) ? outputPath : tempPaths[i];
+                    
+                    await statusMsg.edit({
+                        embeds: [{
+                            color: 0xf39c12,
+                            title: `${preset.emoji} Processing...`,
+                            description: `Step ${i + 1}/${preset.steps.length}: **${step}**`
+                        }]
+                    });
 
-                if (fs.existsSync(tempPath) && fs.statSync(tempPath).size > 0) {
-                    const step2 = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Vm "${tempPath}" --out "${outputPath}" 2>&1`;
-                    const { stdout, stderr } = await execAsync(step2, { timeout: 180000 });
+                    const command = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset ${step} "${currentInput}" --out "${currentOutput}" 2>&1`;
+                    await execAsync(command, { timeout: 120000 });
 
-                    if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-                        success = true;
-                        usedPreset = 'Maximum (Strong + VM)';
-                    } else {
-                        errorOutput = stdout || stderr || 'VM step failed';
+                    if (!fs.existsSync(currentOutput) || fs.statSync(currentOutput).size === 0) {
+                        throw new Error(`Step ${step} failed`);
                     }
-                } else {
-                    errorOutput = 'Strong step failed';
+
+                    currentInput = currentOutput;
+                }
+
+                if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+                    success = true;
                 }
             } catch (err) {
-                errorOutput = err.stderr || err.message;
+                errorOutput = err.message;
             }
 
             if (!success) {
                 try {
-                    if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
-                    
+                    cleanupFiles(outputPath);
                     const fallback = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset Strong "${inputPath}" --out "${outputPath}" 2>&1`;
                     await execAsync(fallback, { timeout: 120000 });
 
@@ -250,8 +260,7 @@ async function handleObfuscate(message) {
 
             if (!success) {
                 try {
-                    if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
-                    
+                    cleanupFiles(outputPath);
                     const fallback = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua "${inputPath}" --out "${outputPath}" 2>&1`;
                     const { stdout, stderr } = await execAsync(fallback, { timeout: 120000 });
 
@@ -269,10 +278,8 @@ async function handleObfuscate(message) {
 
         if (success) {
             const originalSize = Buffer.byteLength(cleanedCode, 'utf8');
-            
             const obfuscatedCode = fs.readFileSync(outputPath, 'utf8');
             const finalCode = HEADER + obfuscatedCode;
-            
             const obfuscatedSize = Buffer.byteLength(finalCode, 'utf8');
             const ratio = ((obfuscatedSize / originalSize) * 100).toFixed(0);
 
@@ -317,7 +324,7 @@ async function handleObfuscate(message) {
             }).catch(() => {});
         }
     } finally {
-        cleanupFiles(inputPath, outputPath, tempPath);
+        cleanupFiles(inputPath, outputPath, ...tempPaths);
     }
 }
 
@@ -330,7 +337,7 @@ async function handleHelp(message) {
                 {
                     name: 'Commands',
                     value: 
-                        '`!obfuscate [preset]` - Obfuscate file\n' +
+                        '`!obf [preset]` - Obfuscate file\n' +
                         '`!presets` - Lihat presets\n' +
                         '`!test` - Test bot\n' +
                         '`!example` - Contoh script'
@@ -339,7 +346,8 @@ async function handleHelp(message) {
                     name: 'Presets',
                     value: 
                         '🟢 `minify` 🔵 `weak` 🟡 `medium`\n' +
-                        '🟠 `strong` 🔴 `vm` 💀 `max`'
+                        '🟠 `strong` 🔴 `vm` 💀 `max`\n' +
+                        '⚡ `custom` (Roblox)'
                 }
             ]
         }]
@@ -374,7 +382,11 @@ async function handlePresets(message) {
                 },
                 {
                     name: '💀 Max',
-                    value: 'Strong + VM (Maximum protection)'
+                    value: 'Strong + VM'
+                },
+                {
+                    name: '⚡ Custom (Roblox)',
+                    value: 'Minify → Weak → Medium → Strong\n(Best untuk Roblox scripts)'
                 }
             ]
         }]
@@ -452,7 +464,7 @@ print(data.name)`;
         embeds: [{
             color: 0x2ecc71,
             title: '📝 Example',
-            description: 'Download dan obfuscate dengan:\n`!obfuscate max`'
+            description: 'Download dan obfuscate dengan:\n`!obf custom`'
         }],
         files: [file]
     });
