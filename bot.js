@@ -25,6 +25,7 @@ const client = new Client({
 const TOKEN = process.env.DISCORD_TOKEN;
 const PROMETHEUS_PATH = process.env.PROMETHEUS_PATH || '/app/prometheus';
 const IRONBREW_PATH = process.env.IRONBREW_PATH || '/app/ironbrew';
+const TEMP_PATH = '/tmp';
 
 if (!TOKEN) {
     console.error('TOKEN NOT FOUND');
@@ -44,6 +45,10 @@ client.on('ready', () => {
     console.log(`Bot ${client.user.tag} online`);
     console.log(`Prometheus: ${PROMETHEUS_PATH}`);
     console.log(`IronBrew: ${IRONBREW_PATH}`);
+    
+    // Check directories
+    console.log(`Prometheus exists: ${fs.existsSync(PROMETHEUS_PATH)}`);
+    console.log(`IronBrew exists: ${fs.existsSync(IRONBREW_PATH)}`);
 });
 
 client.on('messageCreate', async (message) => {
@@ -68,13 +73,13 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// ========== PROMETHEUS HANDLER (STABLE) ==========
+// ========== PROMETHEUS HANDLER ==========
 async function handlePrometheus(message) {
     if (message.attachments.size === 0) {
         return message.reply({
             embeds: [{
                 color: 0x3498db,
-                title: '📌 Prometheus - Cara Pakai',
+                title: '📌 Prometheus',
                 description: '`!obf [preset]` + attach file',
                 fields: [{
                     name: 'Presets',
@@ -179,8 +184,23 @@ async function handlePrometheus(message) {
     }
 }
 
-// ========== IRONBREW HANDLER (EXPERIMENTAL) ==========
+// ========== IRONBREW HANDLER ==========
 async function handleIronBrew(message) {
+    // Check if IronBrew exists
+    if (!fs.existsSync(IRONBREW_PATH)) {
+        return message.reply({
+            embeds: [{
+                color: 0xe74c3c,
+                title: '❌ IronBrew Tidak Tersedia',
+                description: 'IronBrew tidak terinstall dengan benar.',
+                fields: [{
+                    name: '💡 Alternatif',
+                    value: 'Gunakan `!obf medium` (Prometheus)'
+                }]
+            }]
+        });
+    }
+
     if (message.attachments.size === 0) {
         return message.reply({
             embeds: [{
@@ -189,7 +209,7 @@ async function handleIronBrew(message) {
                 description: '`!iron` + attach file .lua',
                 fields: [{
                     name: '⚠️ Warning',
-                    value: 'IronBrew adalah fitur eksperimental.\nJika gagal, gunakan `!obf` (Prometheus).'
+                    value: 'IronBrew adalah fitur eksperimental.'
                 }]
             }]
         });
@@ -206,8 +226,9 @@ async function handleIronBrew(message) {
     }
 
     const timestamp = Date.now();
-    const inputPath = path.join(IRONBREW_PATH, `in_${timestamp}.lua`);
-    const outputPath = path.join(IRONBREW_PATH, `out_${timestamp}.lua`);
+    // Gunakan /tmp untuk file sementara
+    const inputPath = path.join(TEMP_PATH, `iron_in_${timestamp}.lua`);
+    const outputPath = path.join(TEMP_PATH, `iron_out_${timestamp}.lua`);
 
     let statusMsg;
 
@@ -232,24 +253,41 @@ async function handleIronBrew(message) {
             }]
         });
 
-        // Coba beberapa kemungkinan command IronBrew
         let success = false;
         let errorOutput = '';
         let obfuscatedCode = '';
 
-        // Method 1: dotnet run dengan project
-        const commands = [
-            `cd "${IRONBREW_PATH}" && dotnet run --project . -- "${inputPath}" -o "${outputPath}" 2>&1`,
-            `cd "${IRONBREW_PATH}" && dotnet run -- "${inputPath}" "${outputPath}" 2>&1`,
-            `cd "${IRONBREW_PATH}/bin/Release/net6.0" && dotnet IronBrew.dll "${inputPath}" "${outputPath}" 2>&1`,
-            `cd "${IRONBREW_PATH}/bin/Release/net6.0" && ./IronBrew "${inputPath}" "${outputPath}" 2>&1`
+        // Cari executable IronBrew
+        const possiblePaths = [
+            path.join(IRONBREW_PATH, 'bin/Release/net6.0/IronBrew'),
+            path.join(IRONBREW_PATH, 'bin/Release/net6.0/IronBrew.dll'),
+            path.join(IRONBREW_PATH, 'bin/Debug/net6.0/IronBrew'),
+            path.join(IRONBREW_PATH, 'bin/Debug/net6.0/IronBrew.dll')
         ];
+
+        // Coba berbagai command
+        const commands = [
+            `cd "${IRONBREW_PATH}" && dotnet run -- "${inputPath}" -o "${outputPath}" 2>&1`,
+            `cd "${IRONBREW_PATH}" && dotnet run -- "${inputPath}" "${outputPath}" 2>&1`,
+            `cd "${IRONBREW_PATH}" && dotnet run -- -i "${inputPath}" -o "${outputPath}" 2>&1`
+        ];
+
+        // Tambah command untuk executable yang ada
+        for (const exePath of possiblePaths) {
+            if (fs.existsSync(exePath)) {
+                if (exePath.endsWith('.dll')) {
+                    commands.push(`dotnet "${exePath}" "${inputPath}" -o "${outputPath}" 2>&1`);
+                } else {
+                    commands.push(`"${exePath}" "${inputPath}" -o "${outputPath}" 2>&1`);
+                }
+            }
+        }
 
         for (const cmd of commands) {
             try {
                 console.log(`[IronBrew] Trying: ${cmd}`);
                 const { stdout, stderr } = await execAsync(cmd, { timeout: 180000 });
-                
+
                 if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
                     obfuscatedCode = fs.readFileSync(outputPath, 'utf8');
                     success = true;
@@ -337,8 +375,8 @@ async function handleHelp(message) {
                     value: '`!iron` + attach file'
                 },
                 {
-                    name: '📋 Other Commands',
-                    value: '`!presets` - Lihat presets\n`!status` - Cek status bot\n`!help` - Bantuan'
+                    name: '📋 Commands',
+                    value: '`!presets` - Lihat presets\n`!status` - Cek status\n`!help` - Bantuan'
                 }
             ]
         }]
@@ -360,46 +398,31 @@ async function handlePresets(message) {
 }
 
 async function handleStatus(message) {
-    let promStatus = '❓ Unknown';
-    let ironStatus = '❓ Unknown';
+    let promStatus = '❌ Not Found';
+    let ironStatus = '❌ Not Found';
 
     // Check Prometheus
-    try {
-        if (fs.existsSync(path.join(PROMETHEUS_PATH, 'cli.lua'))) {
-            promStatus = '✅ Ready';
-        } else {
-            promStatus = '❌ Not Found';
-        }
-    } catch (e) {
-        promStatus = '❌ Error';
+    if (fs.existsSync(path.join(PROMETHEUS_PATH, 'cli.lua'))) {
+        promStatus = '✅ Ready';
     }
 
     // Check IronBrew
-    try {
-        const ironFiles = fs.existsSync(IRONBREW_PATH);
-        if (ironFiles) {
-            // Check if built
+    if (fs.existsSync(IRONBREW_PATH)) {
+        const files = fs.readdirSync(IRONBREW_PATH);
+        if (files.length > 0) {
             const hasBin = fs.existsSync(path.join(IRONBREW_PATH, 'bin'));
-            const hasCsproj = fs.readdirSync(IRONBREW_PATH).some(f => f.endsWith('.csproj'));
-            
             if (hasBin) {
                 ironStatus = '✅ Built';
-            } else if (hasCsproj) {
-                ironStatus = '⚠️ Not Built';
             } else {
-                ironStatus = '❌ Invalid';
+                ironStatus = '⚠️ Not Built';
             }
-        } else {
-            ironStatus = '❌ Not Found';
         }
-    } catch (e) {
-        ironStatus = '❌ Error';
     }
 
     await message.reply({
         embeds: [{
             color: 0x3498db,
-            title: '📊 Bot Status',
+            title: '📊 Status',
             fields: [
                 { name: '🔧 Prometheus', value: promStatus, inline: true },
                 { name: '⚙️ IronBrew', value: ironStatus, inline: true }
@@ -409,7 +432,7 @@ async function handleStatus(message) {
     });
 }
 
-// ========== HELPER FUNCTIONS ==========
+// ========== HELPERS ==========
 function downloadFile(url) {
     return new Promise((resolve, reject) => {
         const makeRequest = (targetUrl, redirects = 0) => {
