@@ -1,64 +1,11 @@
-# Dependencies
 node_modules
-npm-debug.log
-yarn-error.log
-package-lock.json
-
-# Git
 .git
 .gitignore
-
-# Documentation
 *.md
-README*
-LICENSE
-
-# Environment files (PENTING - jangan expose secrets!)
 .env
 .env.*
-*.env
-
-# IDE/Editor
+Dockerfile
+.dockerignore
+*.log
 .vscode
 .idea
-*.swp
-*.swo
-*~
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Logs
-logs
-*.log
-
-# Temporary files
-tmp
-temp
-*.tmp
-*.temp
-
-# Test files
-test
-tests
-__tests__
-*.test.js
-*.spec.js
-coverage
-
-# Docker files (tidak perlu di-copy ke dalam image)
-Dockerfile
-docker-compose*.yml
-.dockerignore
-
-# Build artifacts
-dist
-build
-.cache
-
-# Miscellaneous
-*.bak
-*.backup
-.npm
-.eslintcache
