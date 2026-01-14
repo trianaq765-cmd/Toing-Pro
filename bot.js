@@ -48,37 +48,35 @@ client.on('messageCreate', async (message) => {
             const response = await fetch(attachment.url);
             const luaCode = await response.text();
             
-            const inputPath = path.join(__dirname, 'temp_input.lua');
-            const outputPath = path.join(__dirname, 'temp_output.lua');
+            // Simpan file di folder Prometheus
+            const inputPath = '/app/Prometheus-master/temp_input.lua';
+            const outputPath = '/app/Prometheus-master/temp_output.lua';
             
             fs.writeFileSync(inputPath, luaCode);
 
-            // FIX: Path yang benar ke Prometheus CLI
-            const command = `cd /app/Prometheus-master && lua5.1 cli.lua --preset Medium ${inputPath} --out ${outputPath}`;
+            // Jalankan dari dalam folder Prometheus
+            const command = `cd /app/Prometheus-master && lua5.1 cli.lua --preset Medium temp_input.lua --out temp_output.lua`;
             
             exec(command, async (error, stdout, stderr) => {
-                // Debug log
                 console.log('stdout:', stdout);
                 console.log('stderr:', stderr);
                 
                 if (error) {
                     console.error('Error:', error);
-                    await statusMsg.edit(`❌ Gagal obfuscate:\n\`\`\`${error.message}\`\`\``);
-                    
-                    // Cleanup
+                    await statusMsg.edit(`❌ Gagal obfuscate:\n\`\`\`${stderr || error.message}\`\`\``);
                     if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
                     return;
                 }
 
-                // Check if output file exists
+                // Check output file
                 if (!fs.existsSync(outputPath)) {
-                    await statusMsg.edit('❌ File output tidak terbuat. Coba preset lain.');
+                    await statusMsg.edit('❌ File output tidak terbuat.');
                     if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
                     return;
                 }
 
                 const obfuscatedFile = new AttachmentBuilder(outputPath, { 
-                    name: 'obfuscated.lua' 
+                    name: `obfuscated_${attachment.name}` 
                 });
                 
                 await statusMsg.edit({ 
@@ -97,7 +95,13 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // Command test
+    // Test command untuk debug
+    if (message.content === '!testcli') {
+        exec('cd /app/Prometheus-master && lua5.1 cli.lua --help', (error, stdout, stderr) => {
+            message.reply(`\`\`\`${stdout || stderr || error?.message || 'No output'}\`\`\``);
+        });
+    }
+
     if (message.content === '!test') {
         exec('ls -la /app/Prometheus-master/', (error, stdout, stderr) => {
             message.reply(`\`\`\`${stdout || stderr || error}\`\`\``);
@@ -108,7 +112,8 @@ client.on('messageCreate', async (message) => {
         message.reply(`
 **📖 Prometheus Bot Commands**
 \`!obfuscate\` + attach file.lua → Obfuscate script Lua
-\`!test\` → Test Prometheus installation
+\`!test\` → Cek folder Prometheus
+\`!testcli\` → Test Prometheus CLI
 \`!help\` → Tampilkan bantuan
         `);
     }
