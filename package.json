@@ -1,7 +1,7 @@
 {
-  "name": "dual-obfuscator-bot",
-  "version": "2.0.0",
-  "description": "Discord bot with Prometheus + LuaObfuscator API",
+  "name": "prometheus-bot",
+  "version": "1.0.0",
+  "description": "Discord Lua Obfuscator Bot using Prometheus",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
