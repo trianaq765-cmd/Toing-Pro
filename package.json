@@ -1,26 +1,15 @@
 {
-  "name": "prometheus-bot",
+  "name": "dual-obfuscator-bot",
   "version": "2.0.0",
-  "description": "Discord bot for Lua/Roblox script obfuscation using Prometheus",
+  "description": "Discord bot with Prometheus + LuaObfuscator API",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js",
-    "dev": "node --watch bot.js"
+    "start": "node bot.js"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
     "discord.js": "14.14.1"
-  },
-  "keywords": [
-    "discord",
-    "bot",
-    "lua",
-    "roblox",
-    "obfuscator",
-    "prometheus"
-  ],
-  "author": "",
-  "license": "MIT"
+  }
 }
