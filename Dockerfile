@@ -26,15 +26,30 @@ RUN wget -q https://github.com/levno-710/Prometheus/archive/refs/heads/master.zi
     && unzip -q master.zip && rm master.zip \
     && mv Prometheus-master prometheus
 
-# Setup IronBrew
-RUN git clone https://github.com/IsEmil/IronBrew.git ironbrew || true
-RUN cd ironbrew && dotnet restore && dotnet build -c Release || echo "IronBrew build skipped"
+# Setup IronBrew - buat folder jika clone gagal
+RUN mkdir -p ironbrew \
+    && git clone https://github.com/IsEmil/IronBrew.git ironbrew_temp \
+    && cp -r ironbrew_temp/* ironbrew/ \
+    && rm -rf ironbrew_temp \
+    || echo "IronBrew clone failed"
+
+# Build IronBrew jika ada
+RUN cd ironbrew && \
+    if [ -f "*.csproj" ] || [ -f "IronBrew.csproj" ]; then \
+        dotnet restore && dotnet build -c Release; \
+    else \
+        echo "No csproj found"; \
+    fi || echo "IronBrew build skipped"
 
 ENV PROMETHEUS_PATH=/app/prometheus
 ENV IRONBREW_PATH=/app/ironbrew
 
 COPY package*.json ./
-RUN npm install --production
+RUN npm install --omit=dev
+
+COPY . .
+
+CMD ["node", "bot.js"]RUN npm install --production
 
 COPY . .
 
