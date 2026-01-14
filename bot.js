@@ -2,6 +2,16 @@ const { Client, GatewayIntentBits, AttachmentBuilder } = require('discord.js');
 const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+
+// Dummy server untuk Render (GRATIS)
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot is running!');
+}).listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
 
 const client = new Client({
     intents: [
@@ -20,7 +30,6 @@ client.on('ready', () => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
-    // Command: !obfuscate
     if (message.content.startsWith('!obfuscate')) {
         
         if (message.attachments.size === 0) {
@@ -44,7 +53,6 @@ client.on('messageCreate', async (message) => {
             
             fs.writeFileSync(inputPath, luaCode);
 
-            // Menggunakan Lua 5.1 dan path Prometheus yang benar
             const command = `lua5.1 /app/Prometheus-master/cli.lua --preset Medium ${inputPath} --out ${outputPath}`;
             
             exec(command, (error, stdout, stderr) => {
@@ -72,7 +80,6 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // Command: !help
     if (message.content === '!help') {
         message.reply(`
 **📖 Prometheus Bot Commands**
