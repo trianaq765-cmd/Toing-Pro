@@ -8,18 +8,17 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN luarocks install luafilesystem || true
-RUN luarocks install argparse || true
 
 WORKDIR /app
 
 RUN wget -q https://github.com/levno-710/Prometheus/archive/refs/heads/master.zip \
-    && unzip -q master.zip \
-    && rm master.zip
+    && unzip -q master.zip && rm master.zip \
+    && mv Prometheus-master prometheus
 
-ENV PROMETHEUS_PATH=/app/Prometheus-master
+ENV PROMETHEUS_PATH=/app/prometheus
 
 COPY package*.json ./
-RUN npm install --production
+RUN npm install --omit=dev
 
 COPY . .
 
