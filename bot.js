@@ -23,7 +23,6 @@ const client = new Client({
 
 const TOKEN = process.env.DISCORD_TOKEN;
 
-// Presets configuration
 const PRESETS = {
     minify: 'Minify',
     weak: 'Weak', 
@@ -34,7 +33,6 @@ const PRESETS = {
 
 client.on('ready', () => {
     console.log(`Bot ${client.user.tag} sudah online!`);
-    client.user.setActivity('!help | Obfuscator', { type: 'WATCHING' });
 });
 
 client.on('messageCreate', async (message) => {
@@ -75,7 +73,6 @@ client.on('messageCreate', async (message) => {
             });
         }
 
-        // Check file size (max 5MB)
         if (attachment.size > 5 * 1024 * 1024) {
             return message.reply({
                 embeds: [{
@@ -86,7 +83,6 @@ client.on('messageCreate', async (message) => {
             });
         }
 
-        // Get preset from command
         const args = message.content.split(' ');
         const presetName = args[1]?.toLowerCase() || 'minify';
         const preset = PRESETS[presetName] || 'Minify';
@@ -105,28 +101,25 @@ client.on('messageCreate', async (message) => {
                 }]
             });
 
-            // Download file
             const response = await fetch(attachment.url);
             let luaCode = await response.text();
             
-            // Clean encoding issues
-            luaCode = luaCode.replace(/^\uFEFF/, ''); // Remove BOM
-            luaCode = luaCode.replace(/\r\n/g, '\n'); // Normalize line endings
-            luaCode = luaCode.trim(); // Remove extra whitespace
+            // Clean encoding
+            luaCode = luaCode.replace(/^\uFEFF/, '');
+            luaCode = luaCode.replace(/\r\n/g, '\n');
+            luaCode = luaCode.trim();
             
-            // Check for common issues
             if (luaCode.startsWith('?') || luaCode.charCodeAt(0) === 63) {
                 luaCode = luaCode.substring(1);
             }
             
-            // Save to temp file
             const timestamp = Date.now();
             const inputPath = `/app/Prometheus-master/temp_${timestamp}_input.lua`;
             const outputPath = `/app/Prometheus-master/temp_${timestamp}_output.lua`;
+            const validatePath = `/app/Prometheus-master/temp_${timestamp}_validate.lua`;
             
             fs.writeFileSync(inputPath, luaCode, 'utf8');
             
-            // Update status
             await statusMsg.edit({
                 embeds: [{
                     color: 0xffff00,
@@ -135,9 +128,18 @@ client.on('messageCreate', async (message) => {
                 }]
             });
             
-            // Validate syntax
-            exec(`lua5.1 -p ${inputPath}`, async (syntaxError, syntaxStdout, syntaxStderr) => {
-                if (syntaxError) {
+            // FIXED: Validasi dengan cara yang benar
+            const validateScript = `
+local f = assert(loadfile("${inputPath}"))
+print("OK")
+`;
+            fs.writeFileSync(validatePath, validateScript);
+            
+            exec(`lua5.1 ${validatePath}`, async (syntaxError, syntaxStdout, syntaxStderr) => {
+                // Cleanup validate script
+                if (fs.existsSync(validatePath)) fs.unlinkSync(validatePath);
+                
+                if (syntaxError || syntaxStderr) {
                     await statusMsg.edit({
                         embeds: [{
                             color: 0xff0000,
@@ -150,7 +152,7 @@ client.on('messageCreate', async (message) => {
                                 },
                                 {
                                     name: 'Tips:',
-                                    value: '• Pastikan semua `if`, `for`, `while`, `function` memiliki `end`\n• Cek tanda kutip tidak ada yang kurang\n• Pastikan tidak ada karakter aneh'
+                                    value: '• Pastikan semua `if`, `for`, `while`, `function` memiliki `end`\n• Cek tanda kutip tidak ada yang kurang\n• Gunakan `!example` untuk lihat contoh yang benar'
                                 }
                             ]
                         }]
@@ -160,7 +162,6 @@ client.on('messageCreate', async (message) => {
                     return;
                 }
                 
-                // Update status
                 await statusMsg.edit({
                     embeds: [{
                         color: 0xffff00,
@@ -169,17 +170,13 @@ client.on('messageCreate', async (message) => {
                     }]
                 });
                 
-                // Run Prometheus
                 const command = `cd /app/Prometheus-master && lua5.1 cli.lua --preset ${preset} temp_${timestamp}_input.lua --out temp_${timestamp}_output.lua 2>&1`;
                 
                 exec(command, async (error, stdout, stderr) => {
                     console.log(`[Prometheus] stdout: ${stdout}`);
                     console.log(`[Prometheus] stderr: ${stderr}`);
                     
-                    // If preset fails, try without preset
                     if (error || !fs.existsSync(outputPath)) {
-                        console.log('[Prometheus] Trying without preset...');
-                        
                         const fallbackCommand = `cd /app/Prometheus-master && lua5.1 cli.lua temp_${timestamp}_input.lua --out temp_${timestamp}_output.lua 2>&1`;
                         
                         exec(fallbackCommand, async (error2, stdout2, stderr2) => {
@@ -193,10 +190,6 @@ client.on('messageCreate', async (message) => {
                                             {
                                                 name: 'Error:',
                                                 value: `\`\`\`${stderr2 || stderr || error2?.message || error?.message}\`\`\``.substring(0, 1024)
-                                            },
-                                            {
-                                                name: 'Coba:',
-                                                value: '• Gunakan preset `minify` untuk file sederhana\n• Pastikan tidak ada fungsi yang terlalu kompleks'
                                             }
                                         ]
                                     }]
@@ -244,7 +237,6 @@ client.on('messageCreate', async (message) => {
                         console.error('[SendResult] Error:', err);
                         await statusMsg.edit('❌ Error saat mengirim file hasil');
                     } finally {
-                        // Cleanup
                         if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
                         if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
                     }
@@ -263,10 +255,78 @@ client.on('messageCreate', async (message) => {
         }
     }
 
+    // Command: !example
+    if (message.content === '!example') {
+        const examples = `-- ✅ CONTOH 1: Print Sederhana
+print("Hello World")
+
+-- ✅ CONTOH 2: Variables
+local name = "Player"
+local health = 100
+print(name .. " has " .. health .. " HP")
+
+-- ✅ CONTOH 3: If Statement (HARUS ADA END!)
+local x = 10
+if x > 5 then
+    print("X lebih besar dari 5")
+end
+
+-- ✅ CONTOH 4: Function (HARUS ADA END!)
+function greet(name)
+    return "Hello, " .. name
+end
+print(greet("World"))
+
+-- ✅ CONTOH 5: Loop (HARUS ADA END!)
+for i = 1, 5 do
+    print("Loop ke-" .. i)
+end
+
+-- ✅ CONTOH 6: Table
+local player = {
+    name = "John",
+    level = 50,
+    health = 100
+}
+print(player.name)
+
+-- ❌ CONTOH SALAH 1: Kurang END
+if x > 5 then
+    print("Test")
+-- KURANG END DISINI!
+
+-- ❌ CONTOH SALAH 2: Kutip tidak seimbang
+local text = "Hello World
+
+-- ❌ CONTOH SALAH 3: Karakter aneh di awal
+?print("Hello")`;
+
+        const buffer = Buffer.from(examples, 'utf8');
+        const file = new AttachmentBuilder(buffer, { name: 'contoh_lua.lua' });
+
+        await message.reply({
+            embeds: [{
+                color: 0x00ff00,
+                title: '📝 Contoh Syntax Lua yang Benar',
+                description: 'Download file dibawah untuk melihat contoh lengkap!',
+                fields: [
+                    {
+                        name: '✅ Yang Benar:',
+                        value: '• Setiap `if`, `for`, `while`, `function` harus diakhiri `end`\n• Tanda kutip harus seimbang `"..."` atau `\'...\'`\n• Tidak ada karakter aneh di awal file'
+                    },
+                    {
+                        name: '💡 Tips:',
+                        value: '• Test script kamu di Roblox Studio dulu\n• Atau gunakan online Lua compiler: https://www.lua.org/cgi-bin/demo'
+                    }
+                ]
+            }],
+            files: [file]
+        });
+    }
+
     // Command: !test
     if (message.content === '!test') {
-        const testCode = `-- Test Script
-print("Hello World")
+        const testCode = `print("Hello World")
 local x = 10
 if x > 5 then
     print("X is greater than 5")
@@ -313,28 +373,23 @@ end`;
                 fields: [
                     {
                         name: '📌 Commands',
-                        value: `
-\`!obfuscate [preset]\` - Obfuscate file Lua
+                        value: `\`!obfuscate [preset]\` - Obfuscate file Lua
+\`!example\` - Download contoh syntax yang benar
 \`!test\` - Test Prometheus installation
-\`!help\` - Tampilkan bantuan
-                        `
+\`!help\` - Tampilkan bantuan`
                     },
                     {
                         name: '🎨 Presets',
-                        value: `
-\`minify\` - Minify code (paling ringan)
+                        value: `\`minify\` - Minify code (paling ringan)
 \`weak\` - Obfuscation lemah
 \`medium\` - Obfuscation sedang
 \`strong\` - Obfuscation kuat
-\`vm\` - Virtual Machine (paling kuat)
-                        `
+\`vm\` - Virtual Machine (paling kuat)`
                     },
                     {
                         name: '💡 Contoh',
-                        value: `
-\`!obfuscate\` - Gunakan preset default
-\`!obfuscate strong\` - Gunakan preset strong
-                        `
+                        value: `\`!obfuscate\` + attach file.lua
+\`!obfuscate strong\` + attach file.lua`
                     }
                 ],
                 footer: {
@@ -345,7 +400,6 @@ end`;
     }
 });
 
-// Handle errors
 client.on('error', console.error);
 process.on('unhandledRejection', console.error);
 
