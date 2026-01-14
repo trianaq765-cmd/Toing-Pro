@@ -1,11 +1,26 @@
 {
   "name": "prometheus-bot",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "description": "Discord bot for Lua/Roblox script obfuscation using Prometheus",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node bot.js",
+    "dev": "node --watch bot.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
-    "discord.js": "^14.14.1"
-  }
+    "discord.js": "14.14.1"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "lua",
+    "roblox",
+    "obfuscator",
+    "prometheus"
+  ],
+  "author": "",
+  "license": "MIT"
 }
