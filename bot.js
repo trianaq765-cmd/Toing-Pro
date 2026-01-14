@@ -30,47 +30,12 @@ if (!TOKEN) {
     process.exit(1);
 }
 
-const HEADER = `-- This file was protected using Prometheus Obfuscator [https://discord.gg/QarfX8ua2]
-
-`;
+const HEADER = `-- This file was protected using Prometheus Obfuscator [https://discord.gg/QarfX8ua2]\n\n`;
 
 const PRESETS = {
-    minify: {
-        name: 'Minify',
-        value: 'Minify',
-        emoji: '🟢'
-    },
-    weak: {
-        name: 'Weak',
-        value: 'Weak',
-        emoji: '🔵'
-    },
-    medium: {
-        name: 'Medium',
-        value: 'Medium',
-        emoji: '🟡'
-    },
-    strong: {
-        name: 'Strong',
-        value: 'Strong',
-        emoji: '🟠'
-    },
-    vm: {
-        name: 'Virtual Machine',
-        value: 'Vm',
-        emoji: '🔴'
-    },
-    max: {
-        name: 'Maximum',
-        value: 'Strong',
-        emoji: '💀',
-        useVm: true
-    },
-    custom: {
-        name: 'Custom (Roblox)',
-        value: 'Strong',
-        emoji: '⚡'
-    }
+    minify: { value: 'Minify', emoji: '🟢', desc: 'Perkecil ukuran' },
+    weak: { value: 'Weak', emoji: '🔵', desc: 'Variable rename' },
+    medium: { value: 'Medium', emoji: '🟡', desc: 'Encryption + Control flow (Max)' }
 };
 
 client.on('ready', () => {
@@ -79,20 +44,16 @@ client.on('ready', () => {
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
-
+    
     const content = message.content.toLowerCase().trim();
-
+    
     try {
-        if (message.content.startsWith('!obf')) {
+        if (content.startsWith('!obf')) {
             await handleObfuscate(message);
-        } else if (content === '!help') {
-            await handleHelp(message);
         } else if (content === '!presets') {
             await handlePresets(message);
-        } else if (content === '!test') {
-            await handleTest(message);
-        } else if (content === '!example') {
-            await handleExample(message);
+        } else if (content === '!help') {
+            await handleHelp(message);
         }
     } catch (err) {
         console.error(err);
@@ -104,47 +65,24 @@ async function handleObfuscate(message) {
         return message.reply({
             embeds: [{
                 color: 0x3498db,
-                title: '📌 Cara Menggunakan',
-                fields: [
-                    {
-                        name: 'Format',
-                        value: '`!obf [preset]` + attach file'
-                    },
-                    {
-                        name: 'Presets',
-                        value: 
-                            '🟢 `minify` 🔵 `weak` 🟡 `medium`\n' +
-                            '🟠 `strong` 🔴 `vm` 💀 `max`\n' +
-                            '⚡ `custom`'
-                    }
-                ]
+                title: '📌 Cara Pakai',
+                description: '`!obf [preset]` + attach file',
+                fields: [{
+                    name: 'Presets',
+                    value: '🟢 `minify` | 🔵 `weak` | 🟡 `medium`'
+                }]
             }]
         });
     }
 
     const attachment = message.attachments.first();
-
-    const validExtensions = ['.lua', '.txt'];
-    const hasValidExt = validExtensions.some(ext => attachment.name.toLowerCase().endsWith(ext));
     
-    if (!hasValidExt) {
-        return message.reply({
-            embeds: [{
-                color: 0xe74c3c,
-                title: '❌ Format Salah',
-                description: 'File harus `.lua` atau `.txt`'
-            }]
-        });
+    if (!attachment.name.endsWith('.lua') && !attachment.name.endsWith('.txt')) {
+        return message.reply('❌ File harus `.lua` atau `.txt`');
     }
 
     if (attachment.size > 5 * 1024 * 1024) {
-        return message.reply({
-            embeds: [{
-                color: 0xe74c3c,
-                title: '❌ File Terlalu Besar',
-                description: 'Max 5MB'
-            }]
-        });
+        return message.reply('❌ Max 5MB');
     }
 
     const args = message.content.split(/\s+/).slice(1);
@@ -152,9 +90,8 @@ async function handleObfuscate(message) {
     const preset = PRESETS[presetKey] || PRESETS.minify;
 
     const timestamp = Date.now();
-    const inputPath = path.join(PROMETHEUS_PATH, `temp_${timestamp}_input.lua`);
-    const outputPath = path.join(PROMETHEUS_PATH, `temp_${timestamp}_output.lua`);
-    const tempPath = path.join(PROMETHEUS_PATH, `temp_${timestamp}_temp.lua`);
+    const inputPath = path.join(PROMETHEUS_PATH, `in_${timestamp}.lua`);
+    const outputPath = path.join(PROMETHEUS_PATH, `out_${timestamp}.lua`);
 
     let statusMsg;
 
@@ -162,12 +99,7 @@ async function handleObfuscate(message) {
         const luaCode = await downloadFile(attachment.url);
         
         if (!luaCode || luaCode.length < 5) {
-            return message.reply({
-                embeds: [{
-                    color: 0xe74c3c,
-                    title: '❌ File Kosong'
-                }]
-            });
+            return message.reply('❌ File kosong');
         }
 
         const cleanedCode = cleanLuaCode(luaCode);
@@ -177,65 +109,17 @@ async function handleObfuscate(message) {
             embeds: [{
                 color: 0xf39c12,
                 title: `${preset.emoji} Processing...`,
-                description: `Preset: **${preset.name}**`,
                 fields: [
                     { name: 'File', value: attachment.name, inline: true },
-                    { name: 'Size', value: `${(cleanedCode.length / 1024).toFixed(2)} KB`, inline: true }
+                    { name: 'Preset', value: presetKey, inline: true }
                 ]
             }]
         });
 
-        let success = false;
-        let usedPreset = preset.name;
-        let errorOutput = '';
+        const command = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset ${preset.value} "${inputPath}" --out "${outputPath}" 2>&1`;
+        const { stdout, stderr } = await execAsync(command, { timeout: 120000 });
 
-        if (preset.useVm) {
-            await statusMsg.edit({
-                embeds: [{
-                    color: 0xf39c12,
-                    title: `${preset.emoji} Processing...`,
-                    description: 'Step 1/2: **Strong**'
-                }]
-            });
-
-            const step1Result = await runPreset(inputPath, tempPath, 'Strong');
-            
-            if (step1Result.success) {
-                await statusMsg.edit({
-                    embeds: [{
-                        color: 0xf39c12,
-                        title: `${preset.emoji} Processing...`,
-                        description: 'Step 2/2: **VM Wrapper**'
-                    }]
-                });
-
-                const step2Result = await runPreset(tempPath, outputPath, 'Vm');
-                
-                if (step2Result.success) {
-                    success = true;
-                    usedPreset = 'Maximum (Strong + VM)';
-                } else {
-                    fs.copyFileSync(tempPath, outputPath);
-                    success = true;
-                    usedPreset = 'Strong (VM skipped)';
-                }
-            } else {
-                errorOutput = step1Result.error;
-            }
-        } else {
-            const result = await runPreset(inputPath, outputPath, preset.value);
-            success = result.success;
-            errorOutput = result.error;
-        }
-
-        if (!success) {
-            const fallback = await runPreset(inputPath, outputPath, 'Minify');
-            success = fallback.success;
-            errorOutput = fallback.error || errorOutput;
-            if (success) usedPreset = 'Minify (Fallback)';
-        }
-
-        if (success && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
             const obfuscatedCode = fs.readFileSync(outputPath, 'utf8');
             const originalSize = Buffer.byteLength(cleanedCode, 'utf8');
             const finalCode = HEADER + obfuscatedCode;
@@ -243,7 +127,7 @@ async function handleObfuscate(message) {
             const ratio = ((obfuscatedSize / originalSize) * 100).toFixed(0);
 
             const buffer = Buffer.from(finalCode, 'utf8');
-            const outputFile = new AttachmentBuilder(buffer, {
+            const file = new AttachmentBuilder(buffer, {
                 name: `obfuscated_${attachment.name.replace('.txt', '.lua')}`
             });
 
@@ -254,19 +138,18 @@ async function handleObfuscate(message) {
                     fields: [
                         { name: 'Original', value: `${(originalSize / 1024).toFixed(2)} KB`, inline: true },
                         { name: 'Obfuscated', value: `${(obfuscatedSize / 1024).toFixed(2)} KB`, inline: true },
-                        { name: 'Ratio', value: `${ratio}%`, inline: true },
-                        { name: 'Preset', value: usedPreset, inline: true }
+                        { name: 'Ratio', value: `${ratio}%`, inline: true }
                     ],
                     timestamp: new Date()
                 }],
-                files: [outputFile]
+                files: [file]
             });
         } else {
             await statusMsg.edit({
                 embeds: [{
                     color: 0xe74c3c,
                     title: '❌ Gagal',
-                    description: `\`\`\`${(errorOutput || 'Unknown error').substring(0, 500)}\`\`\``
+                    description: `\`\`\`${(stdout || stderr || 'Unknown error').substring(0, 500)}\`\`\``
                 }]
             });
         }
@@ -283,21 +166,7 @@ async function handleObfuscate(message) {
             }).catch(() => {});
         }
     } finally {
-        cleanupFiles(inputPath, outputPath, tempPath);
-    }
-}
-
-async function runPreset(inputPath, outputPath, presetValue) {
-    try {
-        const command = `cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset ${presetValue} "${inputPath}" --out "${outputPath}" 2>&1`;
-        const { stdout, stderr } = await execAsync(command, { timeout: 180000 });
-
-        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-            return { success: true };
-        }
-        return { success: false, error: stdout || stderr || 'No output' };
-    } catch (err) {
-        return { success: false, error: err.stderr || err.message };
+        cleanupFiles(inputPath, outputPath);
     }
 }
 
@@ -309,18 +178,11 @@ async function handleHelp(message) {
             fields: [
                 {
                     name: 'Commands',
-                    value: 
-                        '`!obf [preset]` - Obfuscate file\n' +
-                        '`!presets` - Lihat presets\n' +
-                        '`!test` - Test bot\n' +
-                        '`!example` - Contoh script'
+                    value: '`!obf [preset]` + attach file\n`!presets` - Lihat presets\n`!help` - Bantuan'
                 },
                 {
                     name: 'Presets',
-                    value: 
-                        '🟢 `minify` 🔵 `weak` 🟡 `medium`\n' +
-                        '🟠 `strong` 🔴 `vm` 💀 `max`\n' +
-                        '⚡ `custom`'
+                    value: '🟢 `minify` | 🔵 `weak` | 🟡 `medium`'
                 }
             ]
         }]
@@ -331,142 +193,36 @@ async function handlePresets(message) {
     await message.reply({
         embeds: [{
             color: 0x9b59b6,
-            title: '🎨 Presets (1x Obfuscate)',
-            description: 'Setiap preset = 1x proses obfuscation',
+            title: '🎨 Presets',
             fields: [
-                {
-                    name: '🟢 Minify',
-                    value: 'Hapus whitespace & comments'
-                },
-                {
-                    name: '🔵 Weak',
-                    value: 'Variable rename'
-                },
-                {
-                    name: '🟡 Medium',
-                    value: 'Variable rename, String encryption, Control flow'
-                },
-                {
-                    name: '🟠 Strong',
-                    value: 'Variable rename, String encryption, Control flow, Multi-layer, Anti-debug'
-                },
-                {
-                    name: '🔴 VM',
-                    value: 'Bytecode + Virtual Machine wrapper'
-                },
-                {
-                    name: '💀 Max',
-                    value: 'Strong (1x) → VM wrapper (bungkus)\n*2 step tapi valid karena VM = wrapper*'
-                },
-                {
-                    name: '⚡ Custom',
-                    value: 'Sama dengan Strong (untuk Roblox)'
-                }
+                { name: '🟢 minify', value: 'Perkecil ukuran saja' },
+                { name: '🔵 weak', value: 'Variable rename' },
+                { name: '🟡 medium', value: 'String encryption + Control flow\n*(Tertinggi & paling aman untuk Roblox)*' }
             ]
         }]
     });
 }
 
-async function handleTest(message) {
-    const testCode = 'print("test")\nlocal x=10\nif x>5 then print("ok") end';
-    const timestamp = Date.now();
-    const testPath = path.join(PROMETHEUS_PATH, `test_${timestamp}.lua`);
-    const testOut = path.join(PROMETHEUS_PATH, `test_${timestamp}_out.lua`);
-
-    try {
-        fs.writeFileSync(testPath, testCode, 'utf8');
-        const result = await runPreset(testPath, testOut, 'Minify');
-
-        await message.reply({
-            embeds: [{
-                color: result.success ? 0x2ecc71 : 0xe74c3c,
-                title: '🧪 Test',
-                description: result.success ? '✅ Working' : '❌ Failed'
-            }]
-        });
-
-    } catch (err) {
-        await message.reply({
-            embeds: [{
-                color: 0xe74c3c,
-                title: '❌ Error',
-                description: err.message
-            }]
-        });
-    } finally {
-        cleanupFiles(testPath, testOut);
-    }
-}
-
-async function handleExample(message) {
-    const example = `local Players = game:GetService("Players")
-local player = Players.LocalPlayer
-
-local function greet(name)
-    print("Hello, " .. name)
-end
-
-greet(player.Name)
-
-for i = 1, 10 do
-    print(i)
-end
-
-local data = {
-    name = "Test",
-    value = 100
-}
-
-print(data.name)`;
-
-    const buffer = Buffer.from(example, 'utf8');
-    const file = new AttachmentBuilder(buffer, { name: 'example.lua' });
-
-    await message.reply({
-        embeds: [{
-            color: 0x2ecc71,
-            title: '📝 Example',
-            description: 'Download dan obfuscate dengan:\n`!obf custom`'
-        }],
-        files: [file]
-    });
-}
-
 function downloadFile(url) {
     return new Promise((resolve, reject) => {
-        const makeRequest = (targetUrl, redirectCount = 0) => {
-            if (redirectCount > 5) {
-                reject(new Error('Too many redirects'));
-                return;
-            }
-
-            const urlObj = new URL(targetUrl);
-            const protocol = urlObj.protocol === 'https:' ? https : http;
-
-            const req = protocol.get(targetUrl, (res) => {
+        const makeRequest = (targetUrl, redirects = 0) => {
+            if (redirects > 5) return reject(new Error('Too many redirects'));
+            
+            const protocol = targetUrl.startsWith('https') ? https : http;
+            
+            protocol.get(targetUrl, (res) => {
                 if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                    makeRequest(res.headers.location, redirectCount + 1);
-                    return;
+                    return makeRequest(res.headers.location, redirects + 1);
                 }
-
-                if (res.statusCode !== 200) {
-                    reject(new Error(`HTTP ${res.statusCode}`));
-                    return;
-                }
-
+                if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
+                
                 const chunks = [];
                 res.on('data', chunk => chunks.push(chunk));
                 res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
                 res.on('error', reject);
-            });
-
-            req.on('error', reject);
-            req.setTimeout(30000, () => {
-                req.destroy();
-                reject(new Error('Timeout'));
-            });
+            }).on('error', reject);
         };
-
+        
         makeRequest(url);
     });
 }
@@ -474,25 +230,19 @@ function downloadFile(url) {
 function cleanLuaCode(code) {
     if (!code) return '';
     code = code.replace(/^\uFEFF/, '');
-    code = code.replace(/^\xEF\xBB\xBF/, '');
     code = code.replace(/\r\n/g, '\n');
     code = code.replace(/\r/g, '\n');
     code = code.replace(/\x00/g, '');
     code = code.trim();
-    while (code.length > 0 && code.charCodeAt(0) < 32) {
-        code = code.substring(1);
-    }
     return code;
 }
 
 function cleanupFiles(...files) {
-    for (const file of files) {
+    files.forEach(file => {
         try {
-            if (file && fs.existsSync(file)) {
-                fs.unlinkSync(file);
-            }
+            if (file && fs.existsSync(file)) fs.unlinkSync(file);
         } catch (err) {}
-    }
+    });
 }
 
 client.on('error', () => {});
