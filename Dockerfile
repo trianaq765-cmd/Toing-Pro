@@ -1,46 +1,35 @@
-FROM node:18
+FROM node:18-slim
 
-# Install Lua 5.1 dan dependencies
+# Install Lua 5.1 dan dependencies untuk Prometheus
 RUN apt-get update && apt-get install -y \
     wget \
     unzip \
     lua5.1 \
-    liblua5.1-0-dev \
     luarocks \
-    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Lua dependencies yang dibutuhkan Prometheus
-RUN luarocks install luafilesystem
-RUN luarocks install argparse
+# Install Lua dependencies
+RUN luarocks install luafilesystem || true
+RUN luarocks install argparse || true
 
 WORKDIR /app
 
 # Download Prometheus
-RUN wget https://github.com/levno-710/Prometheus/archive/refs/heads/master.zip \
-    && unzip master.zip \
+RUN wget -q https://github.com/levno-710/Prometheus/archive/refs/heads/master.zip \
+    && unzip -q master.zip \
     && rm master.zip
 
-# Verify installations
-RUN echo "=== Lua Version ===" && lua5.1 -v
-RUN echo "=== Prometheus Files ===" && ls -la /app/Prometheus-master/
-RUN echo "=== Test Prometheus ===" && cd /app/Prometheus-master && lua5.1 cli.lua --help || echo "CLI help not available"
+# Verify
+RUN lua5.1 -v && ls -la /app/Prometheus-master/
 
-# Create temp directory
-RUN mkdir -p /app/Prometheus-master/temp
-
-# Set environment variable
+# Set environment
 ENV PROMETHEUS_PATH=/app/Prometheus-master
 
 # Install Node.js dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm install --production
 
-# Copy bot files
+# Copy bot
 COPY . .
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-3000}/ || exit 1
 
 CMD ["node", "bot.js"]
