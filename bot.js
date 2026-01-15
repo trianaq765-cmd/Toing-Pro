@@ -17,27 +17,29 @@ const DISCORD_LINK=process.env.DISCORD_LINK||'https://discord.gg/yourinvite';
 
 if(!TOKEN){console.error('TOKEN NOT FOUND');process.exit(1);}
 
+// ========== HEADERS ==========
 const HEADER={
 prometheus:`-- This file was protected using Prometheus Obfuscator [${DISCORD_LINK}]\n\n`,
 luafree:`-- This file was protected using Lua Obfuscator [${DISCORD_LINK}]\n\n`
 };
 
-// ========== LUA FREE PRESETS - FORMAT LANGSUNG (BUKAN CustomPlugins) ==========
+// ========== LUA FREE PRESETS (FIXED: FLAT FORMAT) ==========
+// Menggunakan format "MinifiyAll: false + Direct" sesuai hasil test sukses
 const LUAFREE_PRESETS={
 'dystropic':{
   name:'Dystropic Malevolence',
-  desc:'Maximum protection',
+  desc:'Maximum protection (Large)',
   config:{
     MinifiyAll:false,
     Virtualize:true,
     EncryptStrings:true,
     MixedBooleanArithmetic:true,
-    JunkCode:true,
-    ControlFlowFlattenV2:true,
+    JunkifyAllIfStatements:true,
+    ControlFlowFlattenV1:true,
     MutateAllLiterals:true,
     TableIndirection:true,
-    SwizzleLookups:true,
-    MakeGlobalsLookups:true
+    BytecodeShuffle:true,
+    JunkCode:true
   }
 },
 'chaotic_evil':{
@@ -47,9 +49,10 @@ const LUAFREE_PRESETS={
     MinifiyAll:false,
     Virtualize:true,
     EncryptStrings:true,
-    JunkCode:true,
     ControlFlowFlattenV1:true,
+    JunkifyAllIfStatements:true,
     MutateAllLiterals:true,
+    JunkCode:true,
     SwizzleLookups:true
   }
 },
@@ -59,21 +62,21 @@ const LUAFREE_PRESETS={
   config:{
     MinifiyAll:false,
     EncryptStrings:true,
-    JunkCode:true,
     ControlFlowFlattenV1:true,
     MutateAllLiterals:true,
-    SwizzleLookups:true
+    SwizzleLookups:true,
+    JunkCode:true
   }
 },
 'obfuscate_v1':{
   name:'OBFUSCATE V1',
-  desc:'Standard',
+  desc:'Standard protection',
   config:{
     MinifiyAll:false,
     EncryptStrings:true,
-    JunkCode:true,
     ControlFlowFlattenV1:true,
-    SwizzleLookups:true
+    JunkCode:true,
+    AntiTamper:true
   }
 },
 'basic_good':{
@@ -88,16 +91,15 @@ const LUAFREE_PRESETS={
 },
 'basic_minimal':{
   name:'Basic Minimal',
-  desc:'Minimal',
+  desc:'Minimal protection',
   config:{
     MinifiyAll:false,
-    EncryptStrings:true,
-    SwizzleLookups:true
+    EncryptStrings:true
   }
 },
 'minify':{
   name:'Minify Only',
-  desc:'Reduce size',
+  desc:'Reduce size only',
   config:{
     MinifiyAll:true
   }
@@ -129,11 +131,11 @@ new SlashCommandBuilder().setName('lua').setDescription('Lua Free Custom')
 new SlashCommandBuilder().setName('luapreset').setDescription('Lua Free Preset')
 .addAttachmentOption(o=>o.setName('file').setDescription('File .lua').setRequired(true))
 .addStringOption(o=>o.setName('preset').setDescription('Preset').setRequired(true).addChoices(
-{name:'💀 Dystropic Malevolence (Max)',value:'dystropic'},
-{name:'😈 Chaotic Evil (Heavy)',value:'chaotic_evil'},
-{name:'😇 Chaotic Good (Balanced)',value:'chaotic_good'},
-{name:'🔒 OBFUSCATE V1 (Standard)',value:'obfuscate_v1'},
-{name:'✅ Basic Good (Light)',value:'basic_good'},
+{name:'💀 Dystropic Malevolence',value:'dystropic'},
+{name:'😈 Chaotic Evil',value:'chaotic_evil'},
+{name:'😇 Chaotic Good',value:'chaotic_good'},
+{name:'🔒 OBFUSCATE V1',value:'obfuscate_v1'},
+{name:'✅ Basic Good',value:'basic_good'},
 {name:'📝 Basic Minimal',value:'basic_minimal'},
 {name:'📦 Minify Only',value:'minify'}
 )),
@@ -162,7 +164,7 @@ new SlashCommandBuilder().setName('integration').setDescription('Integration')
 new SlashCommandBuilder().setName('menu').setDescription('Menu'),
 new SlashCommandBuilder().setName('status').setDescription('Status'),
 new SlashCommandBuilder().setName('help').setDescription('Help'),
-new SlashCommandBuilder().setName('testlua').setDescription('Test LuaFree formats')
+new SlashCommandBuilder().setName('testlua').setDescription('Debug LuaFree')
 ].map(c=>c.toJSON());
 }
 
@@ -184,8 +186,8 @@ if(CLIENT_ID)await registerCommands();
 client.on('messageCreate',async msg=>{
 if(msg.author.bot)return;
 const cmd=msg.content.trim().toLowerCase();
-if(cmd==='!register'){const m=await msg.reply('...');const r=await registerCommands(msg.guild.id);await m.edit(r.success?`✅ ${r.count} commands!`:`❌ ${r.error}`);}
-if(cmd==='!reset'){const m=await msg.reply('...');try{const rest=new REST({version:'10'}).setToken(TOKEN);await rest.put(Routes.applicationGuildCommands(CLIENT_ID,msg.guild.id),{body:[]});await new Promise(r=>setTimeout(r,1000));const result=await registerCommands(msg.guild.id);await m.edit(result.success?`✅ ${result.count}`:`❌`);}catch(e){await m.edit(`❌ ${e.message}`);}}
+if(cmd==='!register'){const m=await msg.reply('Registering...');const r=await registerCommands(msg.guild.id);await m.edit(r.success?`✅ ${r.count} commands registered!`:`❌ ${r.error}`);}
+if(cmd==='!reset'){const m=await msg.reply('Resetting...');try{const rest=new REST({version:'10'}).setToken(TOKEN);await rest.put(Routes.applicationGuildCommands(CLIENT_ID,msg.guild.id),{body:[]});await new Promise(r=>setTimeout(r,1000));const result=await registerCommands(msg.guild.id);await m.edit(result.success?`✅ ${result.count}`:`❌`);}catch(e){await m.edit(`❌ ${e.message}`);}}
 if(cmd==='!info'){await msg.reply(`SERVICE: ${SERVICE_ID}\nPROVIDER: ${PROVIDER_ID}`);}
 });
 
@@ -204,86 +206,18 @@ fn({content:`Error: ${e.message}`,ephemeral:true}).catch(()=>{});
 async function handleSlash(i){
 const cmd=i.commandName;
 
-// ===== TEST LUA - MULTIPLE FORMATS =====
+// ===== TEST LUA (DEBUG) =====
 if(cmd==='testlua'){
 if(!LUAFREE_API_KEY)return i.reply({content:'LUAFREE_API_KEY not set',ephemeral:true});
 await i.deferReply();
-
-const testScript=`local function hello(name)
-  local greeting = "Hello, " .. name
-  print(greeting)
-  return greeting
-end
-
-for i = 1, 10 do
-  local result = hello("World" .. i)
-  if i > 5 then
-    print("Greater than 5")
-  else
-    print("Less or equal 5")
-  end
-end
-
-local data = {
-  key1 = "value1",
-  key2 = "value2",
-  key3 = 123
+const testScript='local test = "Hello"; print(test);';
+// Test configuration yang terbukti berhasil
+const config={MinifiyAll:false,Virtualize:true,EncryptStrings:true,JunkCode:true};
+const result=await luaFreeObf(testScript,config);
+if(result.success){
+return i.editReply(`✅ **Test Success!**\nCode Length: ${result.code.length}\nPreview:\n\`\`\`lua\n${result.code.substring(0,200)}...\n\`\`\``);
 }
-
-print(data.key1, data.key2, data.key3)`;
-
-const origSize=Buffer.byteLength(testScript,'utf8');
-
-// Test berbagai format
-const formats=[
-  // Format 1: Direct keys
-  {name:'Direct Keys',config:{Virtualize:true,EncryptStrings:true,JunkCode:true}},
-  // Format 2: MinifiyAll false + direct
-  {name:'MinifiyAll:false + Direct',config:{MinifiyAll:false,Virtualize:true,EncryptStrings:true,JunkCode:true}},
-  // Format 3: CustomPlugins
-  {name:'CustomPlugins',config:{MinifiyAll:false,CustomPlugins:{Virtualize:true,EncryptStrings:true,JunkCode:true}}},
-  // Format 4: CustomPlugins dengan array
-  {name:'CustomPlugins Array',config:{MinifiyAll:false,CustomPlugins:{EncryptStrings:[],JunkCode:[],Virtualize:[]}}},
-];
-
-let results=[];
-
-for(const format of formats){
-  const result=await luaFreeObf(testScript,format.config);
-  if(result.success){
-    const newSize=Buffer.byteLength(result.code,'utf8');
-    results.push({
-      name:format.name,
-      origSize,
-      newSize,
-      ratio:((newSize/origSize)*100).toFixed(0),
-      preview:result.code.substring(0,150).replace(/\n/g,' '),
-      config:JSON.stringify(format.config)
-    });
-  }else{
-    results.push({
-      name:format.name,
-      error:result.error,
-      config:JSON.stringify(format.config)
-    });
-  }
-  await new Promise(r=>setTimeout(r,2000)); // Delay antara request
-}
-
-let output=`**🧪 Test Results (Original: ${origSize} bytes)**\n\n`;
-for(const r of results){
-  if(r.error){
-    output+=`❌ **${r.name}:**\nError: ${r.error}\n\n`;
-  }else{
-    const sizeIcon=parseInt(r.ratio)>150?'🔺':parseInt(r.ratio)<100?'🔻':'➡️';
-    output+=`${sizeIcon} **${r.name}:**\nSize: ${r.newSize} bytes (${r.ratio}%)\nPreview: \`${r.preview}...\`\n\n`;
-  }
-}
-
-// Truncate if too long
-if(output.length>1900)output=output.substring(0,1900)+'...';
-
-return i.editReply(output);
+return i.editReply(`❌ Test Failed: ${result.error}`);
 }
 
 // ===== PROMETHEUS =====
@@ -301,14 +235,9 @@ if(result.success){
 const code=HEADER.prometheus+result.code;
 const newSize=Buffer.byteLength(code,'utf8');
 const ratio=((newSize/originalSize)*100).toFixed(0);
-const change=newSize>=originalSize?`+${formatSize(newSize-originalSize)}`:`-${formatSize(originalSize-newSize)}`;
 const embed=new EmbedBuilder().setTitle('Prometheus Obfuscator').setColor(0x00ff00)
-.addFields(
-{name:'Preset',value:preset,inline:true},
-{name:'Original',value:formatSize(originalSize),inline:true},
-{name:'Result',value:formatSize(newSize),inline:true},
-{name:'Change',value:`${change} (${ratio}%)`,inline:true}
-).setFooter({text:DISCORD_LINK});
+.addFields({name:'Preset',value:preset,inline:true},{name:'Size',value:`${formatSize(newSize)} (${ratio}%)`,inline:true})
+.setFooter({text:DISCORD_LINK});
 return i.editReply({embeds:[embed],files:[new AttachmentBuilder(Buffer.from(code,'utf8'),{name:`Prometheus_${preset}_${Date.now()}.lua`})]});
 }
 return i.editReply(`Failed: ${result.error}`);
@@ -320,8 +249,8 @@ if(!LUAFREE_API_KEY)return i.reply({content:'LUAFREE_API_KEY not set',ephemeral:
 const file=i.options.getAttachment('file');
 if(!file.name.endsWith('.lua'))return i.reply({content:'File harus .lua',ephemeral:true});
 
-// Build config dengan format langsung (bukan CustomPlugins)
-const config={};
+// Build config (Flat Object Format)
+const config={MinifiyAll:false}; // Default false agar ukuran besar
 if(i.options.getBoolean('minify'))config.MinifiyAll=true;
 if(i.options.getBoolean('virtualize'))config.Virtualize=true;
 if(i.options.getBoolean('encrypt'))config.EncryptStrings=true;
@@ -333,8 +262,8 @@ if(i.options.getBoolean('swizzle'))config.SwizzleLookups=true;
 if(i.options.getBoolean('table'))config.TableIndirection=true;
 if(i.options.getBoolean('globals'))config.MakeGlobalsLookups=true;
 
-// Default jika tidak ada yang dipilih
-if(Object.keys(config).length===0){
+// Default jika kosong
+if(Object.keys(config).length===1){
 config.EncryptStrings=true;
 config.JunkCode=true;
 config.ControlFlowFlattenV1=true;
@@ -349,17 +278,14 @@ if(result.success){
 const code=HEADER.luafree+result.code;
 const newSize=Buffer.byteLength(code,'utf8');
 const ratio=((newSize/originalSize)*100).toFixed(0);
-const change=newSize>=originalSize?`+${formatSize(newSize-originalSize)}`:`-${formatSize(originalSize-newSize)}`;
 const embed=new EmbedBuilder().setTitle('Lua Obfuscator').setColor(newSize>originalSize?0x00ff00:0xffff00)
 .addFields(
-{name:'Plugins',value:Object.keys(config).join(', ')},
-{name:'Original',value:formatSize(originalSize),inline:true},
-{name:'Result',value:formatSize(newSize),inline:true},
-{name:'Change',value:`${change} (${ratio}%)`,inline:true}
+{name:'Plugins',value:Object.keys(config).filter(k=>k!=='MinifiyAll').join(', ')||'None'},
+{name:'Size',value:`${formatSize(newSize)} (${ratio}%)`,inline:true}
 ).setFooter({text:DISCORD_LINK});
 return i.editReply({embeds:[embed],files:[new AttachmentBuilder(Buffer.from(code,'utf8'),{name:`LuaFree_${Date.now()}.lua`})]});
 }
-return i.editReply(`Failed: ${result.error}\n\nConfig: \`${JSON.stringify(config)}\``);
+return i.editReply(`Failed: ${result.error}`);
 }
 
 // ===== LUA FREE PRESET =====
@@ -381,19 +307,16 @@ if(result.success){
 const code=HEADER.luafree+result.code;
 const newSize=Buffer.byteLength(code,'utf8');
 const ratio=((newSize/originalSize)*100).toFixed(0);
-const change=newSize>=originalSize?`+${formatSize(newSize-originalSize)}`:`-${formatSize(originalSize-newSize)}`;
 const embed=new EmbedBuilder().setTitle('Lua Obfuscator').setColor(newSize>originalSize?0x00ff00:0xffff00)
 .addFields(
 {name:'Preset',value:preset.name,inline:true},
 {name:'Description',value:preset.desc,inline:true},
-{name:'Plugins',value:Object.keys(preset.config).filter(k=>preset.config[k]).join(', ')},
-{name:'Original',value:formatSize(originalSize),inline:true},
-{name:'Result',value:formatSize(newSize),inline:true},
-{name:'Change',value:`${change} (${ratio}%)`,inline:true}
+{name:'Plugins',value:Object.keys(preset.config).filter(k=>k!=='MinifiyAll'&&preset.config[k]).join(', ')},
+{name:'Size',value:`${formatSize(newSize)} (${ratio}%)`,inline:true}
 ).setFooter({text:DISCORD_LINK});
 return i.editReply({embeds:[embed],files:[new AttachmentBuilder(Buffer.from(code,'utf8'),{name:`LuaFree_${presetKey}_${Date.now()}.lua`})]});
 }
-return i.editReply(`Failed: ${result.error}\n\nConfig: \`${JSON.stringify(preset.config)}\``);
+return i.editReply(`Failed: ${result.error}`);
 }
 
 // ===== KEY =====
@@ -404,10 +327,12 @@ const sub=i.options.getSubcommand();
 if(sub==='list'){
 await i.deferReply();
 const r=await jnkieReq('GET',`/keys?serviceId=${SERVICE_ID}&limit=20`);
+if(!r.ok)return i.editReply(`Error: ${r.error||r.raw?.substring(0,500)}`);
 let items=r.data?.keys||[];
 const list=items.slice(0,15).map((k,idx)=>`${idx+1}. \`${String(k.key_value||k.id).substring(0,25)}...\` ID:\`${k.id}\``).join('\n');
-return i.editReply({embeds:[new EmbedBuilder().setTitle('Keys').setColor(0x2ecc71).setDescription(list||'No keys').setFooter({text:`Total: ${items.length}`})]});
+return i.editReply({embeds:[new EmbedBuilder().setTitle('Keys').setColor(0x2ecc71).setDescription(list||'No keys').setFooter({text:`Total: ${items.length} | Provider: ${PROVIDER_ID}`})]});
 }
+
 if(sub==='create'){
 const note=i.options.getString('note')||'Bot';
 const providerId=parseInt(i.options.getString('provider_id')||PROVIDER_ID);
@@ -417,6 +342,7 @@ if(!r.ok)return i.editReply(`Error: ${r.error||r.raw?.substring(0,500)}`);
 const key=r.data?.key?.key_value||JSON.stringify(r.data);
 return i.editReply({embeds:[new EmbedBuilder().setTitle('Key Created').setColor(0x2ecc71).setDescription(`\`\`\`${key}\`\`\``)]});
 }
+
 if(sub==='batch'){
 const count=i.options.getInteger('count')||5;
 const providerId=parseInt(i.options.getString('provider_id')||PROVIDER_ID);
@@ -427,6 +353,7 @@ let keys=r.data?.keys||[];
 const list=keys.slice(0,15).map((k,idx)=>`${idx+1}. \`${k.key_value||k}\``).join('\n');
 return i.editReply({embeds:[new EmbedBuilder().setTitle(`${keys.length} Keys`).setColor(0x2ecc71).setDescription(list)]});
 }
+
 if(sub==='delete'){await i.deferReply();const r=await jnkieReq('DELETE',`/keys/${i.options.getString('id')}`);return i.editReply(r.ok?'✅ Deleted':'Error');}
 if(sub==='reset'){await i.deferReply();const r=await jnkieReq('POST',`/keys/${i.options.getString('id')}/reset-hwid`);return i.editReply(r.ok?'✅ Reset':'Error');}
 return;
@@ -436,9 +363,9 @@ return;
 if(cmd==='service'){
 if(!JNKIE_API_KEY)return i.reply({content:'JNKIE_API_KEY not set',ephemeral:true});
 const sub=i.options.getSubcommand();
-if(sub==='list'){await i.deferReply();const r=await jnkieReq('GET','/services');let items=r.data?.services||[];return i.editReply({embeds:[new EmbedBuilder().setTitle('Services').setColor(0x3498db).setDescription(items.map(s=>`\`${s.id}\` **${s.name}**`).join('\n')||'No services')]});}
+if(sub==='list'){await i.deferReply();const r=await jnkieReq('GET','/services');let items=r.data?.services||[];return i.editReply({embeds:[new EmbedBuilder().setTitle('Services').setColor(0x3498db).setDescription(items.map(s=>`\`${s.id}\` **${s.name}**`).join('\n')||'None')]});}
 if(sub==='create'){await i.deferReply();const r=await jnkieReq('POST','/services',{name:i.options.getString('name'),description:'Bot',is_premium:false,keyless_mode:false});return i.editReply(r.ok?`✅ ID: \`${r.data?.service?.id}\``:'Error');}
-if(sub==='delete'){await i.deferReply();const r=await jnkieReq('DELETE',`/services/${i.options.getString('id')}`);return i.editReply(r.ok?'✅':'Error');}
+if(sub==='delete'){await i.deferReply();const r=await jnkieReq('DELETE',`/services/${i.options.getString('id')}`);return i.editReply(r.ok?'✅ Deleted':'Error');}
 return;
 }
 
@@ -446,9 +373,9 @@ return;
 if(cmd==='provider'){
 if(!JNKIE_API_KEY)return i.reply({content:'JNKIE_API_KEY not set',ephemeral:true});
 const sub=i.options.getSubcommand();
-if(sub==='list'){await i.deferReply();const r=await jnkieReq('GET','/providers');let items=r.data?.providers||[];return i.editReply({embeds:[new EmbedBuilder().setTitle('Providers').setColor(0xe67e22).setDescription(items.map(p=>`\`${p.id}\` **${p.name}** (${p.key_valid_minutes}min)`).join('\n')||'None').setFooter({text:`Default: ${PROVIDER_ID}`})]});}
+if(sub==='list'){await i.deferReply();const r=await jnkieReq('GET','/providers');let items=r.data?.providers||[];return i.editReply({embeds:[new EmbedBuilder().setTitle('Providers').setColor(0xe67e22).setDescription(items.map(p=>`\`${p.id}\` **${p.name}** (${p.key_valid_minutes}min)`).join('\n')||'None')]});}
 if(sub==='create'){await i.deferReply();const r=await jnkieReq('POST','/providers',{name:i.options.getString('name'),key_valid_minutes:60,is_active:true});return i.editReply(r.ok?`✅ ID: \`${r.data?.provider?.id}\``:'Error');}
-if(sub==='delete'){await i.deferReply();const r=await jnkieReq('DELETE',`/providers/${i.options.getString('id')}`);return i.editReply(r.ok?'✅':'Error');}
+if(sub==='delete'){await i.deferReply();const r=await jnkieReq('DELETE',`/providers/${i.options.getString('id')}`);return i.editReply(r.ok?'✅ Deleted':'Error');}
 return;
 }
 
@@ -463,50 +390,33 @@ return;
 
 // ===== MENU =====
 if(cmd==='menu'){
-const embed=new EmbedBuilder().setTitle('Menu').setColor(0x5865F2)
-.setDescription(`**Obfuscate:**\n\`/obf\` Prometheus\n\`/lua\` Custom\n\`/luapreset\` Preset\n\`/testlua\` Test API formats`)
-.setFooter({text:`Service: ${SERVICE_ID} | Provider: ${PROVIDER_ID}`});
-const row=new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId('key_list').setLabel('Keys').setStyle(ButtonStyle.Success),
-new ButtonBuilder().setCustomId('key_create').setLabel('Create').setStyle(ButtonStyle.Primary),
-new ButtonBuilder().setCustomId('provider_list').setLabel('Providers').setStyle(ButtonStyle.Secondary)
-);
+const embed=new EmbedBuilder().setTitle('Menu').setColor(0x5865F2).setDescription(`**Obfuscate:**\n\`/obf\` Prometheus\n\`/lua\` Custom\n\`/luapreset\` Preset\n\`/testlua\` Test API`);
+const row=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('key_list').setLabel('Keys').setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId('key_create').setLabel('Create').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('status').setLabel('Status').setStyle(ButtonStyle.Secondary));
 return i.reply({embeds:[embed],components:[row]});
 }
 
 // ===== STATUS =====
 if(cmd==='status'){
 await i.deferReply();
-return i.editReply({embeds:[new EmbedBuilder().setTitle('Status').setColor(0x2ecc71).addFields(
-{name:'Bot',value:'✅',inline:true},
-{name:'jnkie',value:JNKIE_API_KEY?'✅':'❌',inline:true},
-{name:'LuaFree',value:LUAFREE_API_KEY?'✅':'❌',inline:true},
-{name:'Service',value:SERVICE_ID,inline:true},
-{name:'Provider',value:PROVIDER_ID,inline:true}
-)]});
+const s=await jnkieReq('GET','/services');
+return i.editReply({embeds:[new EmbedBuilder().setTitle('Status').setColor(0x2ecc71).addFields({name:'Bot',value:'✅',inline:true},{name:'jnkie',value:JNKIE_API_KEY?'✅':'❌',inline:true},{name:'LuaFree',value:LUAFREE_API_KEY?'✅':'❌',inline:true},{name:'Service',value:SERVICE_ID,inline:true},{name:'Provider',value:PROVIDER_ID,inline:true})]});
 }
 
 // ===== HELP =====
 if(cmd==='help'){
-return i.reply({embeds:[new EmbedBuilder().setTitle('Help').setColor(0x5865F2)
-.addFields(
-{name:'Obfuscate',value:'`/obf` Prometheus\n`/lua` Custom\n`/luapreset` Preset'},
-{name:'Debug',value:'`/testlua` Test API formats'},
-{name:'Keys',value:'`/key list/create/batch/delete/reset`'},
-{name:'Management',value:'`/service` `/provider` `/integration`'}
-).setDescription('**Tip:** Gunakan `/testlua` dulu untuk test format mana yang bekerja!')]});
+return i.reply({embeds:[new EmbedBuilder().setTitle('Help').setColor(0x5865F2).addFields({name:'Obfuscate',value:'`/obf` Prometheus\n`/lua` Custom\n`/luapreset` Preset\n`/testlua` Debug'},{name:'Keys',value:'`/key list/create/batch/delete/reset`'},{name:'Management',value:'`/service` `/provider` `/integration`'})]});
 }
 }
 
-// ===== BUTTONS =====
+// ========== BUTTON ==========
 async function handleButton(i){
 if(i.customId==='key_list'){await i.deferUpdate();const r=await jnkieReq('GET',`/keys?serviceId=${SERVICE_ID}&limit=15`);let items=r.data?.keys||[];const list=items.slice(0,10).map((k,idx)=>`${idx+1}. \`${String(k.key_value||k.id).substring(0,22)}...\``).join('\n');return i.editReply({embeds:[new EmbedBuilder().setTitle('Keys').setColor(0x2ecc71).setDescription(list||'No keys')],components:[]});}
 if(i.customId==='key_create'){return i.showModal(new ModalBuilder().setCustomId('modal_key').setTitle('Create Key').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('note').setLabel('Note').setStyle(TextInputStyle.Short).setRequired(false)),new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('provider_id').setLabel('Provider ID').setStyle(TextInputStyle.Short).setValue(PROVIDER_ID).setRequired(true))));}
-if(i.customId==='provider_list'){await i.deferUpdate();const r=await jnkieReq('GET','/providers');let items=r.data?.providers||[];return i.editReply({embeds:[new EmbedBuilder().setTitle('Providers').setColor(0xe67e22).setDescription(items.map(p=>`\`${p.id}\` **${p.name}**`).join('\n')||'None')],components:[]});}
+if(i.customId==='status'){await i.deferUpdate();return i.editReply(await buildStatus());}
 await i.deferUpdate();
 }
 
-// ===== MODAL =====
+// ========== MODAL ==========
 async function handleModal(i){
 if(i.customId==='modal_key'){
 const note=i.fields.getTextInputValue('note')||'Bot';
@@ -518,7 +428,7 @@ return i.editReply({embeds:[new EmbedBuilder().setTitle('Key Created').setColor(
 }
 }
 
-// ===== PROMETHEUS =====
+// ========== PROMETHEUS ==========
 async function prometheusObf(script,preset){
 const ts=Date.now();
 const inp=path.join(PROMETHEUS_PATH,`in_${ts}.lua`);
@@ -532,7 +442,7 @@ return{success:false,error:'Output not generated'};
 finally{[inp,out].forEach(f=>{try{fs.unlinkSync(f);}catch(e){}});}
 }
 
-// ===== LUA FREE - COBA BERBAGAI FORMAT =====
+// ========== LUA FREE (FIXED) ==========
 async function luaFreeObf(script,config){
 const cleanScript=script.replace(/^\uFEFF/,'').trim();
 
@@ -542,41 +452,34 @@ const req=https.request({
 hostname:'api.luaobfuscator.com',port:443,path:'/v1/obfuscator/newscript',method:'POST',
 headers:{'Content-Type':'text/plain','apikey':LUAFREE_API_KEY}
 },res=>{
-let data='';res.on('data',c=>data+=c);res.on('end',()=>{
-try{resolve(JSON.parse(data));}catch(e){resolve({error:data});}
-});
+let data='';res.on('data',c=>data+=c);res.on('end',()=>{try{resolve(JSON.parse(data));}catch(e){resolve({error:data});}});
 });
 req.on('error',e=>resolve({error:e.message}));
 req.setTimeout(60000,()=>{req.destroy();resolve({error:'Timeout'});});
 req.write(cleanScript);req.end();
 });
 
-if(!step1.sessionId)return{success:false,error:step1.message||step1.error||JSON.stringify(step1)};
+if(!step1.sessionId)return{success:false,error:step1.message||'No sessionId'};
 
-// Step 2: Obfuscate
+// Step 2: Obfuscate (DIRECT KEYS FORMAT)
 const body=JSON.stringify(config);
-console.log('LuaFree config:',body);
-
 const step2=await new Promise(resolve=>{
 const req=https.request({
 hostname:'api.luaobfuscator.com',port:443,path:'/v1/obfuscator/obfuscate',method:'POST',
 headers:{'Content-Type':'application/json','apikey':LUAFREE_API_KEY,'sessionId':step1.sessionId}
 },res=>{
-let data='';res.on('data',c=>data+=c);res.on('end',()=>{
-console.log('LuaFree response:',data.substring(0,300));
-try{resolve(JSON.parse(data));}catch(e){resolve({error:data});}
-});
+let data='';res.on('data',c=>data+=c);res.on('end',()=>{try{resolve(JSON.parse(data));}catch(e){resolve({error:data});}});
 });
 req.on('error',e=>resolve({error:e.message}));
 req.setTimeout(120000,()=>{req.destroy();resolve({error:'Timeout'});});
 req.write(body);req.end();
 });
 
-if(!step2.code)return{success:false,error:step2.message||step2.error||JSON.stringify(step2)};
+if(!step2.code)return{success:false,error:step2.message||'No code'};
 return{success:true,code:step2.code};
 }
 
-// ===== JNKIE =====
+// ========== JNKIE ==========
 function jnkieReq(method,endpoint,body=null){
 return new Promise(resolve=>{
 const data=body?JSON.stringify(body):'';
@@ -586,7 +489,7 @@ headers:{'Authorization':`Bearer ${JNKIE_API_KEY}`,'Content-Type':'application/j
 },res=>{
 let d='';res.on('data',c=>d+=c);res.on('end',()=>{
 try{resolve({ok:res.statusCode>=200&&res.statusCode<300,status:res.statusCode,data:JSON.parse(d),raw:d});}
-catch(e){resolve({ok:false,error:'Parse',raw:d});}
+catch(e){resolve({ok:false,error:'Parse error',raw:d});}
 });
 });
 req.on('error',e=>resolve({ok:false,error:e.message}));
@@ -595,7 +498,7 @@ if(body)req.write(data);req.end();
 });
 }
 
-// ===== HELPERS =====
+// ========== HELPERS ==========
 function downloadFile(url){return new Promise((r,j)=>{https.get(url,res=>{const d=[];res.on('data',c=>d.push(c));res.on('end',()=>r(Buffer.concat(d).toString('utf8')));}).on('error',j);});}
 function formatSize(b){return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(1)+' MB';}
 
