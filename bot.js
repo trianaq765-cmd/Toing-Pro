@@ -22,100 +22,110 @@ prometheus:`-- This file was protected using Prometheus Obfuscator [${DISCORD_LI
 luafree:`-- This file was protected using Lua Obfuscator [${DISCORD_LINK}]\n\n`
 };
 
-// ========== PRESETS YANG BENAR ==========
-// MinifiyAll = MENGURANGI ukuran (hapus whitespace)
-// Untuk ukuran BESAR, jangan pakai MinifiyAll dan tambah JunkCode banyak
-
+// ========== LUA FREE PRESETS - FORMAT YANG BENAR ==========
+// Format: {MinifiyAll: bool, CustomPlugins: {...}}
 const LUAFREE_PRESETS={
-// MAXIMUM - Ukuran paling besar, proteksi maksimal
 'dystropic':{
   name:'Dystropic Malevolence',
   desc:'Maximum protection, largest size',
-  plugins:{
-    EncryptStrings:true,
-    ControlFlowFlattenAllBlocks:true,
-    MixedBooleanArithmetic:true,
-    JunkifyAllIfStatements:true,
-    TableIndirection:true,
-    BytecodeShuffle:true,
-    MutateAllLiterals:true,
-    JunkCode:true,
-    EncryptFuncDeclaration:true,
-    MakeGlobalsLookups:true,
-    BasicIntegrity:true
+  config:{
+    MinifiyAll:false,
+    CustomPlugins:{
+      EncryptStrings:[],
+      ControlFlowFlattenV2AllBlocks:[],
+      MixedBooleanArithmetic:[],
+      JunkifyAllIfStatements:[],
+      TableIndirection:[],
+      MutateAllLiterals:[],
+      JunkCode:[],
+      EncryptFuncDeclaration:[],
+      MakeGlobalsLookups:[],
+      SwizzleLookups:[],
+      DummyFunctionArgs:[5,10]
+    }
   }
 },
 
-// HEAVY - Ukuran besar
 'chaotic_evil':{
   name:'Chaotic Evil',
   desc:'Heavy obfuscation, large size',
-  plugins:{
-    EncryptStrings:true,
-    ControlFlowFlattenAllBlocks:true,
-    JunkifyAllIfStatements:true,
-    MutateAllLiterals:true,
-    JunkCode:true,
-    SwizzleLookups:true,
-    TableIndirection:true,
-    MakeGlobalsLookups:true
+  config:{
+    MinifiyAll:false,
+    CustomPlugins:{
+      EncryptStrings:[],
+      ControlFlowFlattenV1AllBlocks:[],
+      JunkifyAllIfStatements:[],
+      MutateAllLiterals:[],
+      JunkCode:[],
+      SwizzleLookups:[],
+      TableIndirection:[],
+      DummyFunctionArgs:[3,7]
+    }
   }
 },
 
-// BALANCED - Ukuran medium-besar
 'chaotic_good':{
   name:'Chaotic Good',
   desc:'Balanced, medium-large size',
-  plugins:{
-    EncryptStrings:true,
-    ControlFlowFlattenAllBlocks:true,
-    MutateAllLiterals:true,
-    SwizzleLookups:true,
-    JunkCode:true,
-    MakeGlobalsLookups:true
+  config:{
+    MinifiyAll:false,
+    CustomPlugins:{
+      EncryptStrings:[],
+      ControlFlowFlattenV1AllBlocks:[],
+      MutateAllLiterals:[],
+      SwizzleLookups:[],
+      JunkCode:[],
+      MakeGlobalsLookups:[]
+    }
   }
 },
 
-// STANDARD - Ukuran medium
 'obfuscate_v1':{
   name:'OBFUSCATE V1',
   desc:'Standard protection',
-  plugins:{
-    EncryptStrings:true,
-    ControlFlowFlattenAllBlocks:true,
-    JunkCode:true,
-    SwizzleLookups:true
+  config:{
+    MinifiyAll:false,
+    CustomPlugins:{
+      EncryptStrings:[],
+      ControlFlowFlattenV1AllBlocks:[],
+      JunkCode:[],
+      SwizzleLookups:[],
+      JunkifyAllIfStatements:[]
+    }
   }
 },
 
-// LIGHT - Ukuran sedikit lebih besar
 'basic_good':{
   name:'Basic Good',
-  desc:'Light protection, small increase',
-  plugins:{
-    EncryptStrings:true,
-    ControlFlowFlattenAllBlocks:true,
-    MutateAllLiterals:true
+  desc:'Light protection',
+  config:{
+    MinifiyAll:false,
+    CustomPlugins:{
+      EncryptStrings:[],
+      ControlFlowFlattenV1AllBlocks:[],
+      MutateAllLiterals:[]
+    }
   }
 },
 
-// MINIMAL - Ukuran hampir sama
 'basic_minimal':{
   name:'Basic Minimal',
   desc:'Minimal protection',
-  plugins:{
-    EncryptStrings:true,
-    SwizzleLookups:true
+  config:{
+    MinifiyAll:false,
+    CustomPlugins:{
+      EncryptStrings:[],
+      SwizzleLookups:[]
+    }
   }
 },
 
-// MINIFY ONLY - Ukuran KECIL (untuk production)
 'minify':{
   name:'Minify Only',
-  desc:'Reduce size, basic protection',
-  plugins:{
+  desc:'Reduce size only',
+  config:{
     MinifiyAll:true,
-    EncryptStrings:true
+    CustomPlugins:{}
   }
 }
 };
@@ -134,38 +144,34 @@ new SlashCommandBuilder().setName('lua').setDescription('Lua Free Custom')
 .addBooleanOption(o=>o.setName('minify').setDescription('MinifyAll (reduce size)'))
 .addBooleanOption(o=>o.setName('encrypt').setDescription('Encrypt Strings'))
 .addBooleanOption(o=>o.setName('controlflow').setDescription('Control Flow Flatten'))
-.addBooleanOption(o=>o.setName('junkcode').setDescription('Junk Code (increase size)'))
+.addBooleanOption(o=>o.setName('junkcode').setDescription('Junk Code'))
 .addBooleanOption(o=>o.setName('junkify').setDescription('Junkify If Statements'))
 .addBooleanOption(o=>o.setName('mutate').setDescription('Mutate Literals'))
-.addBooleanOption(o=>o.setName('mixed_boolean').setDescription('Mixed Boolean Arithmetic'))
+.addBooleanOption(o=>o.setName('mixed_boolean').setDescription('Mixed Boolean'))
 .addBooleanOption(o=>o.setName('swizzle').setDescription('Swizzle Lookups'))
 .addBooleanOption(o=>o.setName('table_indirection').setDescription('Table Indirection'))
-.addBooleanOption(o=>o.setName('globals').setDescription('Make Globals Lookups'))
-.addBooleanOption(o=>o.setName('encrypt_func').setDescription('Encrypt Func Declaration'))
-.addBooleanOption(o=>o.setName('integrity').setDescription('Basic Integrity')),
+.addBooleanOption(o=>o.setName('globals').setDescription('Globals Lookups'))
+.addBooleanOption(o=>o.setName('encrypt_func').setDescription('Encrypt Functions'))
+.addBooleanOption(o=>o.setName('dummy_args').setDescription('Dummy Function Args')),
 
 new SlashCommandBuilder().setName('luapreset').setDescription('Lua Free Preset')
 .addAttachmentOption(o=>o.setName('file').setDescription('File .lua').setRequired(true))
 .addStringOption(o=>o.setName('preset').setDescription('Preset').setRequired(true).addChoices(
-{name:'💀 Dystropic - Maximum (Largest)',value:'dystropic'},
-{name:'😈 Chaotic Evil - Heavy (Large)',value:'chaotic_evil'},
-{name:'😇 Chaotic Good - Balanced (Medium-Large)',value:'chaotic_good'},
-{name:'🔒 OBFUSCATE V1 - Standard (Medium)',value:'obfuscate_v1'},
-{name:'✅ Basic Good - Light (Small increase)',value:'basic_good'},
-{name:'📝 Basic Minimal - Minimal',value:'basic_minimal'},
-{name:'📦 Minify - Reduce size',value:'minify'}
+{name:'💀 Dystropic Malevolence (Largest)',value:'dystropic'},
+{name:'😈 Chaotic Evil (Large)',value:'chaotic_evil'},
+{name:'😇 Chaotic Good (Medium-Large)',value:'chaotic_good'},
+{name:'🔒 OBFUSCATE V1 (Medium)',value:'obfuscate_v1'},
+{name:'✅ Basic Good (Small increase)',value:'basic_good'},
+{name:'📝 Basic Minimal',value:'basic_minimal'},
+{name:'📦 Minify Only (Reduce size)',value:'minify'}
 )),
 
 new SlashCommandBuilder().setName('key').setDescription('Key Management')
-.addSubcommand(s=>s.setName('list').setDescription('List keys'))
-.addSubcommand(s=>s.setName('create').setDescription('Create key')
-  .addStringOption(o=>o.setName('note').setDescription('Note'))
-  .addStringOption(o=>o.setName('provider_id').setDescription('Provider ID')))
-.addSubcommand(s=>s.setName('batch').setDescription('Batch create')
-  .addIntegerOption(o=>o.setName('count').setDescription('Count').setRequired(true))
-  .addStringOption(o=>o.setName('provider_id').setDescription('Provider ID')))
-.addSubcommand(s=>s.setName('delete').setDescription('Delete').addStringOption(o=>o.setName('id').setDescription('Key ID').setRequired(true)))
-.addSubcommand(s=>s.setName('reset').setDescription('Reset HWID').addStringOption(o=>o.setName('id').setDescription('Key ID').setRequired(true))),
+.addSubcommand(s=>s.setName('list').setDescription('List'))
+.addSubcommand(s=>s.setName('create').setDescription('Create').addStringOption(o=>o.setName('note').setDescription('Note')).addStringOption(o=>o.setName('provider_id').setDescription('Provider ID')))
+.addSubcommand(s=>s.setName('batch').setDescription('Batch').addIntegerOption(o=>o.setName('count').setDescription('Count').setRequired(true)).addStringOption(o=>o.setName('provider_id').setDescription('Provider ID')))
+.addSubcommand(s=>s.setName('delete').setDescription('Delete').addStringOption(o=>o.setName('id').setDescription('ID').setRequired(true)))
+.addSubcommand(s=>s.setName('reset').setDescription('Reset HWID').addStringOption(o=>o.setName('id').setDescription('ID').setRequired(true))),
 
 new SlashCommandBuilder().setName('service').setDescription('Service Management')
 .addSubcommand(s=>s.setName('list').setDescription('List'))
@@ -177,18 +183,18 @@ new SlashCommandBuilder().setName('provider').setDescription('Provider Managemen
 .addSubcommand(s=>s.setName('create').setDescription('Create').addStringOption(o=>o.setName('name').setDescription('Name').setRequired(true)))
 .addSubcommand(s=>s.setName('delete').setDescription('Delete').addStringOption(o=>o.setName('id').setDescription('ID').setRequired(true))),
 
-new SlashCommandBuilder().setName('integration').setDescription('Integration Management')
+new SlashCommandBuilder().setName('integration').setDescription('Integration')
 .addSubcommand(s=>s.setName('list').setDescription('List'))
 .addSubcommand(s=>s.setName('types').setDescription('Types')),
 
 new SlashCommandBuilder().setName('menu').setDescription('Menu'),
 new SlashCommandBuilder().setName('status').setDescription('Status'),
-new SlashCommandBuilder().setName('plugins').setDescription('List all plugins'),
-new SlashCommandBuilder().setName('help').setDescription('Help')
+new SlashCommandBuilder().setName('plugins').setDescription('Plugins info'),
+new SlashCommandBuilder().setName('help').setDescription('Help'),
+new SlashCommandBuilder().setName('testlua').setDescription('Test LuaFree API response')
 ].map(c=>c.toJSON());
 }
 
-// ========== REGISTER ==========
 async function registerCommands(guildId=null){
 if(!CLIENT_ID)return{success:false,error:'CLIENT_ID not set'};
 try{
@@ -205,21 +211,17 @@ return{success:true,count:commands.length};
 
 client.once('ready',async()=>{
 console.log(`Bot ${client.user.tag} online`);
-console.log(`SERVICE_ID: ${SERVICE_ID} | PROVIDER_ID: ${PROVIDER_ID}`);
 if(CLIENT_ID)await registerCommands();
 });
 
-// ========== MESSAGE COMMANDS ==========
 client.on('messageCreate',async msg=>{
 if(msg.author.bot)return;
 const cmd=msg.content.trim().toLowerCase();
-
 if(cmd==='!register'){
 const m=await msg.reply('Registering...');
 const r=await registerCommands(msg.guild.id);
 await m.edit(r.success?`✅ ${r.count} commands registered!`:`❌ ${r.error}`);
 }
-
 if(cmd==='!reset'){
 const m=await msg.reply('Resetting...');
 try{
@@ -227,21 +229,14 @@ const rest=new REST({version:'10'}).setToken(TOKEN);
 await rest.put(Routes.applicationGuildCommands(CLIENT_ID,msg.guild.id),{body:[]});
 await new Promise(r=>setTimeout(r,1000));
 const result=await registerCommands(msg.guild.id);
-await m.edit(result.success?`✅ Reset! ${result.count} commands.`:`❌ ${result.error}`);
+await m.edit(result.success?`✅ ${result.count} commands.`:`❌ ${result.error}`);
 }catch(e){await m.edit(`❌ ${e.message}`);}
 }
-
 if(cmd==='!info'){
-await msg.reply({embeds:[new EmbedBuilder().setTitle('Info').setColor(0x5865F2).addFields(
-{name:'SERVICE_ID',value:SERVICE_ID,inline:true},
-{name:'PROVIDER_ID',value:PROVIDER_ID,inline:true},
-{name:'JNKIE',value:JNKIE_API_KEY?'✅':'❌',inline:true},
-{name:'LUAFREE',value:LUAFREE_API_KEY?'✅':'❌',inline:true}
-)]});
+await msg.reply(`SERVICE: ${SERVICE_ID}\nPROVIDER: ${PROVIDER_ID}\nJNKIE: ${JNKIE_API_KEY?'✅':'❌'}\nLUAFREE: ${LUAFREE_API_KEY?'✅':'❌'}`);
 }
 });
 
-// ========== INTERACTION HANDLER ==========
 client.on('interactionCreate',async i=>{
 try{
 if(i.isChatInputCommand())await handleSlash(i);
@@ -256,6 +251,30 @@ fn({content:`Error: ${e.message}`,ephemeral:true}).catch(()=>{});
 
 async function handleSlash(i){
 const cmd=i.commandName;
+
+// ===== TEST LUA API =====
+if(cmd==='testlua'){
+if(!LUAFREE_API_KEY)return i.reply({content:'LUAFREE_API_KEY not set',ephemeral:true});
+await i.deferReply();
+
+const testScript='local test = "Hello"\nprint(test)\nfor i=1,10 do\n  print(i)\nend';
+const testConfig={
+  MinifiyAll:false,
+  CustomPlugins:{
+    JunkCode:[],
+    EncryptStrings:[],
+    DummyFunctionArgs:[5,10]
+  }
+};
+
+const result=await luaFreeObf(testScript,testConfig);
+if(result.success){
+const origSize=Buffer.byteLength(testScript,'utf8');
+const newSize=Buffer.byteLength(result.code,'utf8');
+return i.editReply(`**Test Result:**\nOriginal: ${origSize} bytes\nResult: ${newSize} bytes\nRatio: ${((newSize/origSize)*100).toFixed(0)}%\n\n**Config sent:**\n\`\`\`json\n${JSON.stringify(testConfig,null,2)}\n\`\`\`\n\n**Preview (first 500 chars):**\n\`\`\`lua\n${result.code.substring(0,500)}...\n\`\`\``);
+}
+return i.editReply(`Failed: ${result.error}\n\nDebug: ${result.debug||'N/A'}`);
+}
 
 // ===== PROMETHEUS =====
 if(cmd==='obf'){
@@ -272,12 +291,13 @@ if(result.success){
 const code=HEADER.prometheus+result.code;
 const newSize=Buffer.byteLength(code,'utf8');
 const ratio=((newSize/originalSize)*100).toFixed(0);
+const change=newSize>=originalSize?`+${formatSize(newSize-originalSize)}`:`-${formatSize(originalSize-newSize)}`;
 const embed=new EmbedBuilder().setTitle('Prometheus Obfuscator').setColor(0x00ff00)
 .addFields(
 {name:'Preset',value:preset,inline:true},
 {name:'Original',value:formatSize(originalSize),inline:true},
 {name:'Result',value:formatSize(newSize),inline:true},
-{name:'Ratio',value:`${ratio}%`,inline:true}
+{name:'Change',value:`${change} (${ratio}%)`,inline:true}
 ).setFooter({text:DISCORD_LINK});
 return i.editReply({embeds:[embed],files:[new AttachmentBuilder(Buffer.from(code,'utf8'),{name:`Prometheus_${preset}_${Date.now()}.lua`})]});
 }
@@ -290,42 +310,49 @@ if(!LUAFREE_API_KEY)return i.reply({content:'LUAFREE_API_KEY not set',ephemeral:
 const file=i.options.getAttachment('file');
 if(!file.name.endsWith('.lua'))return i.reply({content:'File harus .lua',ephemeral:true});
 
-const plugins={};
-if(i.options.getBoolean('minify'))plugins.MinifiyAll=true;
-if(i.options.getBoolean('encrypt'))plugins.EncryptStrings=true;
-if(i.options.getBoolean('controlflow'))plugins.ControlFlowFlattenAllBlocks=true;
-if(i.options.getBoolean('junkcode'))plugins.JunkCode=true;
-if(i.options.getBoolean('junkify'))plugins.JunkifyAllIfStatements=true;
-if(i.options.getBoolean('mutate'))plugins.MutateAllLiterals=true;
-if(i.options.getBoolean('mixed_boolean'))plugins.MixedBooleanArithmetic=true;
-if(i.options.getBoolean('swizzle'))plugins.SwizzleLookups=true;
-if(i.options.getBoolean('table_indirection'))plugins.TableIndirection=true;
-if(i.options.getBoolean('globals'))plugins.MakeGlobalsLookups=true;
-if(i.options.getBoolean('encrypt_func'))plugins.EncryptFuncDeclaration=true;
-if(i.options.getBoolean('integrity'))plugins.BasicIntegrity=true;
+// Build config dengan format yang benar
+const config={
+  MinifiyAll:i.options.getBoolean('minify')||false,
+  CustomPlugins:{}
+};
 
-// Default: tanpa MinifiyAll agar ukuran bertambah
-if(Object.keys(plugins).length===0){
-plugins.EncryptStrings=true;
-plugins.ControlFlowFlattenAllBlocks=true;
-plugins.JunkCode=true;
+if(i.options.getBoolean('encrypt'))config.CustomPlugins.EncryptStrings=[];
+if(i.options.getBoolean('controlflow'))config.CustomPlugins.ControlFlowFlattenV1AllBlocks=[];
+if(i.options.getBoolean('junkcode'))config.CustomPlugins.JunkCode=[];
+if(i.options.getBoolean('junkify'))config.CustomPlugins.JunkifyAllIfStatements=[];
+if(i.options.getBoolean('mutate'))config.CustomPlugins.MutateAllLiterals=[];
+if(i.options.getBoolean('mixed_boolean'))config.CustomPlugins.MixedBooleanArithmetic=[];
+if(i.options.getBoolean('swizzle'))config.CustomPlugins.SwizzleLookups=[];
+if(i.options.getBoolean('table_indirection'))config.CustomPlugins.TableIndirection=[];
+if(i.options.getBoolean('globals'))config.CustomPlugins.MakeGlobalsLookups=[];
+if(i.options.getBoolean('encrypt_func'))config.CustomPlugins.EncryptFuncDeclaration=[];
+if(i.options.getBoolean('dummy_args'))config.CustomPlugins.DummyFunctionArgs=[5,10];
+
+// Default jika tidak ada yang dipilih
+if(Object.keys(config.CustomPlugins).length===0){
+config.CustomPlugins.EncryptStrings=[];
+config.CustomPlugins.ControlFlowFlattenV1AllBlocks=[];
+config.CustomPlugins.JunkCode=[];
 }
 
 await i.deferReply();
 const script=await downloadFile(file.url);
 const originalSize=Buffer.byteLength(script,'utf8');
-const result=await luaFreeObf(script,plugins);
+const result=await luaFreeObf(script,config);
 
 if(result.success){
 const code=HEADER.luafree+result.code;
 const newSize=Buffer.byteLength(code,'utf8');
 const ratio=((newSize/originalSize)*100).toFixed(0);
+const change=newSize>=originalSize?`+${formatSize(newSize-originalSize)}`:`-${formatSize(originalSize-newSize)}`;
+const pluginList=Object.keys(config.CustomPlugins);
 const embed=new EmbedBuilder().setTitle('Lua Obfuscator').setColor(0x00ff00)
 .addFields(
-{name:'Plugins',value:Object.keys(plugins).join(', ')},
+{name:'Plugins',value:pluginList.join(', ')||'Default'},
+{name:'Minify',value:config.MinifiyAll?'Yes':'No',inline:true},
 {name:'Original',value:formatSize(originalSize),inline:true},
 {name:'Result',value:formatSize(newSize),inline:true},
-{name:'Ratio',value:`${ratio}%`,inline:true}
+{name:'Change',value:`${change} (${ratio}%)`,inline:true}
 ).setFooter({text:DISCORD_LINK});
 return i.editReply({embeds:[embed],files:[new AttachmentBuilder(Buffer.from(code,'utf8'),{name:`LuaFree_${Date.now()}.lua`})]});
 }
@@ -345,21 +372,23 @@ if(!preset)return i.reply({content:'Preset not found',ephemeral:true});
 await i.deferReply();
 const script=await downloadFile(file.url);
 const originalSize=Buffer.byteLength(script,'utf8');
-const result=await luaFreeObf(script,preset.plugins);
+const result=await luaFreeObf(script,preset.config);
 
 if(result.success){
 const code=HEADER.luafree+result.code;
 const newSize=Buffer.byteLength(code,'utf8');
 const ratio=((newSize/originalSize)*100).toFixed(0);
-const sizeChange=newSize>originalSize?`+${formatSize(newSize-originalSize)}`:`-${formatSize(originalSize-newSize)}`;
-const embed=new EmbedBuilder().setTitle('Lua Obfuscator').setColor(0x00ff00)
+const change=newSize>=originalSize?`+${formatSize(newSize-originalSize)}`:`-${formatSize(originalSize-newSize)}`;
+const pluginList=Object.keys(preset.config.CustomPlugins);
+const embed=new EmbedBuilder().setTitle('Lua Obfuscator').setColor(newSize>=originalSize?0x00ff00:0xffff00)
 .addFields(
 {name:'Preset',value:preset.name,inline:true},
 {name:'Description',value:preset.desc,inline:true},
-{name:'Plugins',value:Object.keys(preset.plugins).join(', ')},
+{name:'Plugins',value:pluginList.join(', ')||'None'},
+{name:'Minify',value:preset.config.MinifiyAll?'Yes':'No',inline:true},
 {name:'Original',value:formatSize(originalSize),inline:true},
 {name:'Result',value:formatSize(newSize),inline:true},
-{name:'Change',value:`${sizeChange} (${ratio}%)`,inline:true}
+{name:'Change',value:`${change} (${ratio}%)`,inline:true}
 ).setFooter({text:DISCORD_LINK});
 return i.editReply({embeds:[embed],files:[new AttachmentBuilder(Buffer.from(code,'utf8'),{name:`LuaFree_${presetKey}_${Date.now()}.lua`})]});
 }
@@ -375,9 +404,9 @@ if(sub==='list'){
 await i.deferReply();
 const r=await jnkieReq('GET',`/keys?serviceId=${SERVICE_ID}&limit=20`);
 if(!r.ok)return i.editReply(`Error: ${r.error||r.raw?.substring(0,500)}`);
-let items=r.data?.keys||[];if(!Array.isArray(items))items=[];
+let items=r.data?.keys||[];
 const list=items.slice(0,15).map((k,idx)=>`${idx+1}. \`${String(k.key_value||k.id).substring(0,25)}...\` ID:\`${k.id}\``).join('\n');
-return i.editReply({embeds:[new EmbedBuilder().setTitle('Keys').setColor(0x2ecc71).setDescription(list||'No keys').setFooter({text:`Total: ${items.length} | Provider: ${PROVIDER_ID}`})]});
+return i.editReply({embeds:[new EmbedBuilder().setTitle('Keys').setColor(0x2ecc71).setDescription(list||'No keys').setFooter({text:`Total: ${items.length}`})]});
 }
 
 if(sub==='create'){
@@ -386,8 +415,8 @@ const providerId=parseInt(i.options.getString('provider_id')||PROVIDER_ID);
 await i.deferReply();
 const r=await jnkieReq('POST','/keys',{serviceId:parseInt(SERVICE_ID),providerId,note,maxHwids:3});
 if(!r.ok)return i.editReply(`Error: ${r.error||r.raw?.substring(0,500)}`);
-const key=r.data?.key?.key_value||r.data?.key_value||JSON.stringify(r.data);
-return i.editReply({embeds:[new EmbedBuilder().setTitle('Key Created').setColor(0x2ecc71).setDescription(`\`\`\`${key}\`\`\``).setFooter({text:`Provider: ${providerId}`})]});
+const key=r.data?.key?.key_value||JSON.stringify(r.data);
+return i.editReply({embeds:[new EmbedBuilder().setTitle('Key Created').setColor(0x2ecc71).setDescription(`\`\`\`${key}\`\`\``)]});
 }
 
 if(sub==='batch'){
@@ -398,19 +427,19 @@ const r=await jnkieReq('POST','/keys/batch',{serviceId:parseInt(SERVICE_ID),prov
 if(!r.ok)return i.editReply(`Error: ${r.error||r.raw?.substring(0,500)}`);
 let keys=r.data?.keys||[];
 const list=keys.slice(0,15).map((k,idx)=>`${idx+1}. \`${k.key_value||k}\``).join('\n');
-return i.editReply({embeds:[new EmbedBuilder().setTitle(`${keys.length} Keys Created`).setColor(0x2ecc71).setDescription(list).setFooter({text:`Provider: ${providerId}`})]});
+return i.editReply({embeds:[new EmbedBuilder().setTitle(`${keys.length} Keys Created`).setColor(0x2ecc71).setDescription(list)]});
 }
 
 if(sub==='delete'){
 await i.deferReply();
 const r=await jnkieReq('DELETE',`/keys/${i.options.getString('id')}`);
-return i.editReply(r.ok?'✅ Deleted':`Error: ${r.error||r.raw?.substring(0,300)}`);
+return i.editReply(r.ok?'✅ Deleted':`Error: ${r.error}`);
 }
 
 if(sub==='reset'){
 await i.deferReply();
 const r=await jnkieReq('POST',`/keys/${i.options.getString('id')}/reset-hwid`);
-return i.editReply(r.ok?'✅ HWID Reset':`Error: ${r.error||r.raw?.substring(0,300)}`);
+return i.editReply(r.ok?'✅ Reset':`Error: ${r.error}`);
 }
 return;
 }
@@ -422,18 +451,18 @@ const sub=i.options.getSubcommand();
 if(sub==='list'){
 await i.deferReply();
 const r=await jnkieReq('GET','/services');
-let items=r.data?.services||[];if(!Array.isArray(items))items=[items].filter(Boolean);
-return i.editReply({embeds:[new EmbedBuilder().setTitle('Services').setColor(0x3498db).setDescription(items.map(s=>`\`${s.id}\` **${s.name||'?'}**`).join('\n')||'No services')]});
+let items=r.data?.services||[];
+return i.editReply({embeds:[new EmbedBuilder().setTitle('Services').setColor(0x3498db).setDescription(items.map(s=>`\`${s.id}\` **${s.name}**`).join('\n')||'No services')]});
 }
 if(sub==='create'){
 await i.deferReply();
 const r=await jnkieReq('POST','/services',{name:i.options.getString('name'),description:'Bot',is_premium:false,keyless_mode:false});
-return i.editReply(r.ok?`✅ Created: \`${r.data?.service?.id||r.data?.id}\``:`Error: ${r.error||r.raw?.substring(0,400)}`);
+return i.editReply(r.ok?`✅ Created: \`${r.data?.service?.id}\``:`Error`);
 }
 if(sub==='delete'){
 await i.deferReply();
 const r=await jnkieReq('DELETE',`/services/${i.options.getString('id')}`);
-return i.editReply(r.ok?'✅ Deleted':`Error: ${r.error||r.raw?.substring(0,300)}`);
+return i.editReply(r.ok?'✅ Deleted':'Error');
 }
 return;
 }
@@ -445,13 +474,13 @@ const sub=i.options.getSubcommand();
 if(sub==='list'){
 await i.deferReply();
 const r=await jnkieReq('GET','/providers');
-let items=r.data?.providers||[];if(!Array.isArray(items))items=[items].filter(Boolean);
-return i.editReply({embeds:[new EmbedBuilder().setTitle('Providers').setColor(0xe67e22).setDescription(items.map(p=>`\`${p.id}\` **${p.name||'?'}** (${p.key_valid_minutes||0}min)`).join('\n')||'No providers').setFooter({text:`Default: ${PROVIDER_ID}`})]});
+let items=r.data?.providers||[];
+return i.editReply({embeds:[new EmbedBuilder().setTitle('Providers').setColor(0xe67e22).setDescription(items.map(p=>`\`${p.id}\` **${p.name}** (${p.key_valid_minutes}min)`).join('\n')||'No providers').setFooter({text:`Default: ${PROVIDER_ID}`})]});
 }
 if(sub==='create'){
 await i.deferReply();
 const r=await jnkieReq('POST','/providers',{name:i.options.getString('name'),key_valid_minutes:60,is_active:true});
-return i.editReply(r.ok?`✅ Created: \`${r.data?.provider?.id||r.data?.id}\``:`Error`);
+return i.editReply(r.ok?`✅ Created: \`${r.data?.provider?.id}\``:'Error');
 }
 if(sub==='delete'){
 await i.deferReply();
@@ -468,8 +497,8 @@ const sub=i.options.getSubcommand();
 if(sub==='list'){
 await i.deferReply();
 const r=await jnkieReq('GET','/integrations');
-let items=r.data?.integrations||[];if(!Array.isArray(items))items=[items].filter(Boolean);
-return i.editReply({embeds:[new EmbedBuilder().setTitle('Integrations').setColor(0x9b59b6).setDescription(items.map(x=>`\`${x.id}\` **${x.name||'?'}** (${x.type||'?'})`).join('\n')||'No integrations')]});
+let items=r.data?.integrations||[];
+return i.editReply({embeds:[new EmbedBuilder().setTitle('Integrations').setColor(0x9b59b6).setDescription(items.map(x=>`\`${x.id}\` **${x.name}** (${x.type})`).join('\n')||'No integrations')]});
 }
 if(sub==='types'){
 await i.deferReply();
@@ -481,21 +510,19 @@ return;
 
 // ===== PLUGINS =====
 if(cmd==='plugins'){
-const embed=new EmbedBuilder().setTitle('Lua Free Plugins').setColor(0x2ecc71)
+return i.reply({embeds:[new EmbedBuilder().setTitle('Lua Free Plugins').setColor(0x9b59b6)
+.setDescription(`**Format API:**\n\`\`\`json\n{\n  "MinifiyAll": false,\n  "CustomPlugins": {\n    "EncryptStrings": [],\n    "JunkCode": [],\n    "DummyFunctionArgs": [5, 10]\n  }\n}\n\`\`\``)
 .addFields(
-{name:'📦 Size Reducers',value:'`MinifiyAll` - Single line, removes comments\n`Minifier2` - Better minification'},
-{name:'🔒 Encryption',value:'`EncryptStrings` - Encrypt all strings\n`EncryptFuncDeclaration` - Encrypt functions\n`ConstantArray` - Hide constants'},
-{name:'🛡️ Protection',value:'`ControlFlowFlattenAllBlocks` - State-based flow\n`TableIndirection` - Variables to table\n`BasicIntegrity` - Integrity checks'},
-{name:'🗑️ Junk (Increase Size)',value:'`JunkCode` - Add dead code\n`JunkifyAllIfStatements` - Opaque conditions\n`JunkifyBlockToIf` - Block to if'},
-{name:'🔄 Mutation',value:'`MutateAllLiterals` - Mutate numbers\n`MixedBooleanArithmetic` - Boolean math\n`SwizzleLookups` - foo.bar to foo["bar"]\n`MakeGlobalsLookups` - _G["foo"]'}
-).setFooter({text:'Tip: Jangan gunakan MinifiyAll jika ingin ukuran besar'});
-return i.reply({embeds:[embed]});
+{name:'🔻 Reduce Size',value:'`MinifiyAll` - Remove whitespace/comments'},
+{name:'🔺 Increase Size',value:'`JunkCode` - Add dead code\n`JunkifyAllIfStatements` - Opaque conditions\n`DummyFunctionArgs` - Add dummy args\n`TableIndirection` - Variable wrappers'},
+{name:'🔐 Protection',value:'`EncryptStrings` - Encrypt strings\n`ControlFlowFlattenV1AllBlocks` - State flow\n`MixedBooleanArithmetic` - Boolean math'}
+)]});
 }
 
 // ===== MENU =====
 if(cmd==='menu'){
 const embed=new EmbedBuilder().setTitle('Menu').setColor(0x5865F2)
-.setDescription(`**Obfuscate:**\n\`/obf\` Prometheus\n\`/lua\` Lua Free Custom\n\`/luapreset\` Lua Free Preset\n\n**Size Tips:**\n• Hapus \`minify\` untuk ukuran lebih besar\n• Gunakan \`junkcode\` + \`junkify\` untuk ukuran maksimal`)
+.setDescription(`**Obfuscate:**\n\`/obf\` Prometheus\n\`/lua\` Custom plugins\n\`/luapreset\` Preset\n\`/testlua\` Test API`)
 .setFooter({text:`Service: ${SERVICE_ID} | Provider: ${PROVIDER_ID}`});
 const row=new ActionRowBuilder().addComponents(
 new ButtonBuilder().setCustomId('key_list').setLabel('Keys').setStyle(ButtonStyle.Success),
@@ -509,26 +536,24 @@ return i.reply({embeds:[embed],components:[row]});
 if(cmd==='status'){
 await i.deferReply();
 const s=await jnkieReq('GET','/services');
-const p=await jnkieReq('GET','/providers');
-const embed=new EmbedBuilder().setTitle('Status').setColor(0x2ecc71).addFields(
-{name:'Bot',value:'✅ Online',inline:true},
+return i.editReply({embeds:[new EmbedBuilder().setTitle('Status').setColor(0x2ecc71).addFields(
+{name:'Bot',value:'✅',inline:true},
 {name:'jnkie',value:JNKIE_API_KEY?'✅':'❌',inline:true},
 {name:'LuaFree',value:LUAFREE_API_KEY?'✅':'❌',inline:true},
 {name:'Service',value:SERVICE_ID,inline:true},
 {name:'Provider',value:PROVIDER_ID,inline:true}
-);
-return i.editReply({embeds:[embed]});
+)]});
 }
 
 // ===== HELP =====
 if(cmd==='help'){
 return i.reply({embeds:[new EmbedBuilder().setTitle('Help').setColor(0x5865F2)
 .addFields(
-{name:'Obfuscate',value:'`/obf` Prometheus\n`/lua` Custom plugins\n`/luapreset` Preset template'},
-{name:'Keys',value:'`/key create` `/key batch count:`\n`/key list` `/key delete` `/key reset`'},
-{name:'Info',value:'`/plugins` List all plugins\n`/status` Bot status'}
-).setDescription(`**Size Tips:**\n• \`Dystropic\` = Ukuran TERBESAR\n• \`Minify\` = Ukuran terkecil\n• Jangan pakai \`MinifiyAll\` jika ingin ukuran besar`)
-.setFooter({text:DISCORD_LINK})]});
+{name:'Obfuscate',value:'`/obf` Prometheus\n`/lua` Custom\n`/luapreset` Preset\n`/testlua` Test API'},
+{name:'Keys',value:'`/key list/create/batch/delete/reset`'},
+{name:'Management',value:'`/service` `/provider` `/integration`'},
+{name:'Info',value:'`/plugins` `/status`'}
+).setDescription('**Tip:** Gunakan `/testlua` untuk test apakah API berfungsi dengan benar')]});
 }
 }
 
@@ -537,7 +562,7 @@ async function handleButton(i){
 if(i.customId==='key_list'){
 await i.deferUpdate();
 const r=await jnkieReq('GET',`/keys?serviceId=${SERVICE_ID}&limit=15`);
-let items=r.data?.keys||[];if(!Array.isArray(items))items=[];
+let items=r.data?.keys||[];
 const list=items.slice(0,10).map((k,idx)=>`${idx+1}. \`${String(k.key_value||k.id).substring(0,22)}...\``).join('\n');
 return i.editReply({embeds:[new EmbedBuilder().setTitle('Keys').setColor(0x2ecc71).setDescription(list||'No keys')],components:[]});
 }
@@ -552,7 +577,7 @@ await i.deferUpdate();
 const r=await jnkieReq('GET','/providers');
 let items=r.data?.providers||[];
 const list=items.map(p=>`\`${p.id}\` **${p.name}** (${p.key_valid_minutes}min)`).join('\n');
-return i.editReply({embeds:[new EmbedBuilder().setTitle('Providers').setColor(0xe67e22).setDescription(list||'No providers')],components:[]});
+return i.editReply({embeds:[new EmbedBuilder().setTitle('Providers').setColor(0xe67e22).setDescription(list||'None')],components:[]});
 }
 await i.deferUpdate();
 }
@@ -564,7 +589,7 @@ const note=i.fields.getTextInputValue('note')||'Bot';
 const providerId=parseInt(i.fields.getTextInputValue('provider_id')||PROVIDER_ID);
 await i.deferReply();
 const r=await jnkieReq('POST','/keys',{serviceId:parseInt(SERVICE_ID),providerId,note,maxHwids:3});
-if(!r.ok)return i.editReply(`Error: ${r.error||r.raw?.substring(0,500)}`);
+if(!r.ok)return i.editReply(`Error: ${r.error}`);
 const key=r.data?.key?.key_value||JSON.stringify(r.data);
 return i.editReply({embeds:[new EmbedBuilder().setTitle('Key Created').setColor(0x2ecc71).setDescription(`\`\`\`${key}\`\`\``)]});
 }
@@ -584,44 +609,65 @@ return{success:false,error:'Output not generated'};
 finally{[inp,out].forEach(f=>{try{fs.unlinkSync(f);}catch(e){}});}
 }
 
-// ========== LUA FREE ==========
-async function luaFreeObf(script,plugins){
+// ========== LUA FREE - FORMAT YANG BENAR ==========
+async function luaFreeObf(script,config){
 const cleanScript=script.replace(/^\uFEFF/,'').trim();
 
-// Step 1
+console.log('=== LuaFree Request ===');
+console.log('Script length:',cleanScript.length);
+console.log('Config:',JSON.stringify(config));
+
+// Step 1: Create session
 const step1=await new Promise(resolve=>{
 const req=https.request({
 hostname:'api.luaobfuscator.com',port:443,path:'/v1/obfuscator/newscript',method:'POST',
 headers:{'Content-Type':'text/plain','apikey':LUAFREE_API_KEY}
 },res=>{
 let data='';res.on('data',c=>data+=c);res.on('end',()=>{
-try{resolve(JSON.parse(data));}catch(e){resolve({error:data});}
+console.log('Step1 response:',data.substring(0,200));
+try{resolve(JSON.parse(data));}catch(e){resolve({error:'Parse error',raw:data});}
 });
 });
-req.on('error',e=>resolve({error:e.message}));
+req.on('error',e=>{console.error('Step1 error:',e);resolve({error:e.message});});
 req.setTimeout(60000,()=>{req.destroy();resolve({error:'Timeout'});});
 req.write(cleanScript);req.end();
 });
 
-if(!step1.sessionId)return{success:false,error:step1.message||step1.error||JSON.stringify(step1)};
+if(!step1.sessionId){
+return{success:false,error:step1.message||step1.error||'No sessionId',debug:JSON.stringify(step1)};
+}
 
-// Step 2
-const body=JSON.stringify(plugins);
+console.log('SessionId:',step1.sessionId.substring(0,30)+'...');
+
+// Step 2: Obfuscate dengan format yang benar
+const body=JSON.stringify(config);
+console.log('Step2 body:',body);
+
 const step2=await new Promise(resolve=>{
 const req=https.request({
 hostname:'api.luaobfuscator.com',port:443,path:'/v1/obfuscator/obfuscate',method:'POST',
-headers:{'Content-Type':'application/json','apikey':LUAFREE_API_KEY,'sessionId':step1.sessionId}
+headers:{
+'Content-Type':'application/json',
+'apikey':LUAFREE_API_KEY,
+'sessionId':step1.sessionId
+}
 },res=>{
 let data='';res.on('data',c=>data+=c);res.on('end',()=>{
-try{resolve(JSON.parse(data));}catch(e){resolve({error:data});}
+console.log('Step2 response length:',data.length);
+console.log('Step2 response preview:',data.substring(0,200));
+try{resolve(JSON.parse(data));}catch(e){resolve({error:'Parse error',raw:data});}
 });
 });
-req.on('error',e=>resolve({error:e.message}));
+req.on('error',e=>{console.error('Step2 error:',e);resolve({error:e.message});});
 req.setTimeout(120000,()=>{req.destroy();resolve({error:'Timeout'});});
 req.write(body);req.end();
 });
 
-if(!step2.code)return{success:false,error:step2.message||step2.error||JSON.stringify(step2)};
+if(!step2.code){
+return{success:false,error:step2.message||step2.error||'No code',debug:JSON.stringify(step2)};
+}
+
+console.log('Success! Code length:',step2.code.length);
 return{success:true,code:step2.code};
 }
 
