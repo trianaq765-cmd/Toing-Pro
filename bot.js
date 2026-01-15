@@ -23,7 +23,7 @@ prometheus:`-- This file was protected using Prometheus Obfuscator [${DISCORD_LI
 luafree:`-- This file was protected using Lua Obfuscator [${DISCORD_LINK}]\n\n`
 };
 
-// ========== LUA FREE PRESETS (FIXED) ==========
+// ========== LUA FREE PRESETS ==========
 const LUAFREE_PRESETS={
 'dystropic':{
   name:'Dystropic Malevolence',
@@ -94,7 +94,7 @@ const LUAFREE_PRESETS={
   config:{
     MinifiyAll:false,
     EncryptStrings:true,
-    JunkCode:true // TAMBAH JUNKCODE UNTUK INCREASE SIZE
+    JunkCode:true
   }
 },
 'minify':{
@@ -250,8 +250,8 @@ if(!LUAFREE_API_KEY)return i.reply({content:'⚠️ LUAFREE_API_KEY not set',eph
 const file=i.options.getAttachment('file');
 if(!file.name.endsWith('.lua'))return i.reply({content:'❌ File harus .lua',ephemeral:true});
 
-// Build config (Flat Object Format)
-const config={MinifiyAll:false}; // Default false
+// Build config
+const config={MinifiyAll:false};
 if(i.options.getBoolean('minify'))config.MinifiyAll=true;
 if(i.options.getBoolean('virtualize'))config.Virtualize=true;
 if(i.options.getBoolean('encrypt'))config.EncryptStrings=true;
@@ -263,12 +263,12 @@ if(i.options.getBoolean('swizzle'))config.SwizzleLookups=true;
 if(i.options.getBoolean('table'))config.TableIndirection=true;
 if(i.options.getBoolean('globals'))config.MakeGlobalsLookups=true;
 
-// ✅ PERBAIKAN: Default config lebih agresif jika kosong
+// Default config jika kosong
 if(Object.keys(config).length===1){
 config.EncryptStrings=true;
 config.JunkCode=true;
 config.ControlFlowFlattenV1=true;
-config.MutateAllLiterals=true; // TAMBAH INI
+config.MutateAllLiterals=true;
 }
 
 await i.deferReply();
@@ -281,23 +281,33 @@ const code=HEADER.luafree+result.code;
 const newSize=Buffer.byteLength(code,'utf8');
 const ratio=((newSize/originalSize)*100).toFixed(0);
 
-// ✅ PERBAIKAN: Warning jika ratio terlalu kecil (kemungkinan tidak ter-obfuscate)
 const warningLowRatio=ratio<120&&!config.MinifiyAll;
-const color=newSize>originalSize?0x00ff00:(warningLowRatio?0xff9900:0xffff00);
+const hasWarning=result.warning;
+let color=0x00ff00;
+let title='✅ Lua Obfuscator';
+let warningText='';
+
+if(hasWarning==='OUTPUT_SMALLER'){
+color=0xff0000;
+title='🚨 CRITICAL: Output Mengecil!';
+warningText='**🚨 CRITICAL ERROR:**\nOutput file **lebih kecil** dari original!\n\n**Diagnosis:**\n❌ File kemungkinan di-**MINIFY** bukan di-**OBFUSCATE**\n❌ API mungkin mengabaikan config\n❌ Quota API habis atau limit tercapai\n\n**Solusi:**\n1. Cek API key di dashboard\n2. Coba preset berbeda\n3. Hubungi support';
+}else if(warningLowRatio){
+color=0xff9900;
+title='⚠️ Low Ratio Warning';
+warningText='⚠️ **Warning:** Output ratio rendah! Mungkin tidak ter-obfuscate dengan baik.\nCoba gunakan preset atau tambah plugin.';
+}
 
 const embed=new EmbedBuilder()
-.setTitle(warningLowRatio?'⚠️ Lua Obfuscator (Low Ratio)':'✅ Lua Obfuscator')
+.setTitle(title)
 .setColor(color)
 .addFields(
 {name:'Plugins',value:Object.keys(config).filter(k=>k!=='MinifiyAll'&&config[k]).join(', ')||'None'},
 {name:'Size',value:`${formatSize(newSize)} (${ratio}%)`,inline:true}
 );
 
-if(warningLowRatio){
-embed.setDescription('⚠️ **Warning:** Output ratio rendah! Mungkin tidak ter-obfuscate dengan baik.\nCoba gunakan preset atau tambah plugin.');
-}
-
+if(warningText)embed.setDescription(warningText);
 embed.setFooter({text:DISCORD_LINK});
+
 return i.editReply({embeds:[embed],files:[new AttachmentBuilder(Buffer.from(code,'utf8'),{name:`LuaFree_${Date.now()}.lua`})]});
 }
 return i.editReply(`❌ **Failed:** ${result.error}\n\nDebug: \`${result.debug||'N/A'}\``);
@@ -317,7 +327,10 @@ await i.deferReply();
 const script=await downloadFile(file.url);
 const originalSize=Buffer.byteLength(script,'utf8');
 
-console.log(`[LUAPRESET] ${presetKey} | Config:`,JSON.stringify(preset.config));
+console.log(`[LUAPRESET] Preset: ${presetKey}`);
+console.log(`[LUAPRESET] Original size: ${originalSize} bytes`);
+console.log(`[LUAPRESET] Config:`,JSON.stringify(preset.config));
+
 const result=await luaFreeObf(script,preset.config);
 
 if(result.success){
@@ -325,29 +338,55 @@ const code=HEADER.luafree+result.code;
 const newSize=Buffer.byteLength(code,'utf8');
 const ratio=((newSize/originalSize)*100).toFixed(0);
 
-// ✅ PERBAIKAN: Validasi untuk preset non-minify
+console.log(`[LUAPRESET] Final size: ${newSize} bytes (${ratio}%)`);
+
+const hasWarning=result.warning;
 const expectedLarge=!preset.config.MinifiyAll;
-const warningLowRatio=ratio<150&&expectedLarge;
-const color=warningLowRatio?0xff9900:(newSize>originalSize?0x00ff00:0xffff00);
+
+let color=0x00ff00;
+let title='✅ Lua Obfuscator';
+let warningText='';
+
+if(hasWarning==='OUTPUT_SMALLER'){
+color=0xff0000;
+title='🚨 CRITICAL: Output Mengecil!';
+warningText='**🚨 CRITICAL ERROR:**\nOutput file **lebih kecil** dari original!\n\n**Diagnosis:**\n❌ File kemungkinan di-**MINIFY** bukan di-**OBFUSCATE**\n❌ API mungkin mengabaikan config\n❌ Quota API habis atau limit tercapai\n\n**Solusi:**\n1. Cek API key valid di dashboard\n2. Coba preset berbeda\n3. Test dengan `/testlua` dulu\n4. Hubungi support LuaObfuscator';
+}else if(hasWarning==='LOW_RATIO'){
+color=0xff9900;
+title='⚠️ Warning: Low Ratio';
+warningText='**⚠️ Warning:** Ratio lebih rendah dari ekspektasi\n\nConfig mungkin tidak diterapkan sepenuhnya.';
+}else if(ratio<100&&expectedLarge){
+color=0xff0000;
+title='🚨 ERROR: File Mengecil';
+warningText='**🚨 ERROR:** Output file lebih kecil dari original ('+ratio+'%)\n\nIni **TIDAK NORMAL** untuk preset non-minify!\n\n**Kemungkinan:**\n- API error\n- Quota habis\n- Config tidak diterapkan';
+}else if(ratio<150&&expectedLarge){
+color=0xff9900;
+title='⚠️ Low Ratio Warning';
+warningText='**⚠️ Warning:** Ratio rendah untuk preset ini ('+ratio+'%)\n\nHasil mungkin tidak optimal. Expected >150%';
+}
 
 const embed=new EmbedBuilder()
-.setTitle(warningLowRatio?'⚠️ Lua Obfuscator (Low Ratio)':'✅ Lua Obfuscator')
+.setTitle(title)
 .setColor(color)
 .addFields(
 {name:'Preset',value:preset.name,inline:true},
 {name:'Description',value:preset.desc,inline:true},
 {name:'Plugins',value:Object.keys(preset.config).filter(k=>k!=='MinifiyAll'&&preset.config[k]).join(', ')||'MinifyAll'},
-{name:'Size',value:`${formatSize(newSize)} (${ratio}%)`,inline:true}
+{name:'Original Size',value:formatSize(originalSize),inline:true},
+{name:'Output Size',value:formatSize(newSize),inline:true},
+{name:'Ratio',value:`${ratio}%`,inline:true}
 );
 
-if(warningLowRatio){
-embed.setDescription('⚠️ **Warning:** Output ratio tidak sesuai ekspektasi!\n**Kemungkinan penyebab:**\n- API tidak merespons dengan benar\n- Config tidak diterapkan\n- Script terlalu kecil\n\n**Solusi:** Coba test dengan `/testlua` atau hubungi support.');
+if(warningText)embed.setDescription(warningText);
+embed.setFooter({text:DISCORD_LINK});
+
+return i.editReply({
+embeds:[embed],
+files:[new AttachmentBuilder(Buffer.from(code,'utf8'),{name:`LuaFree_${presetKey}_${Date.now()}.lua`})]
+});
 }
 
-embed.setFooter({text:DISCORD_LINK});
-return i.editReply({embeds:[embed],files:[new AttachmentBuilder(Buffer.from(code,'utf8'),{name:`LuaFree_${presetKey}_${Date.now()}.lua`})]});
-}
-return i.editReply(`❌ **Failed:** ${result.error}\n\nDebug Info:\n\`\`\`${result.debug||'N/A'}\`\`\``);
+return i.editReply(`❌ **Failed:** ${result.error}\n\n**Debug Info:**\n\`\`\`${result.debug||'N/A'}\`\`\``);
 }
 
 // ===== KEY =====
@@ -473,79 +512,138 @@ return{success:false,error:'Output not generated'};
 finally{[inp,out].forEach(f=>{try{fs.unlinkSync(f);}catch(e){}});}
 }
 
-// ========== LUA FREE (FIXED WITH VALIDATION) ==========
-async function luaFreeObf(script,config){
+// ========== LUA FREE (FIXED WITH RETRY & VALIDATION) ==========
+async function luaFreeObf(script,config,retries=2){
 const cleanScript=script.replace(/^\uFEFF/,'').trim();
 const originalLength=cleanScript.length;
 
-console.log('[LUAFREE] Step 1: Creating session...');
+console.log('[LUAFREE] Original Length:',originalLength);
 console.log('[LUAFREE] Config:',JSON.stringify(config));
 
+const isLargeScript=originalLength>50000;
+const sessionTimeout=isLargeScript?90000:60000;
+const obfTimeout=isLargeScript?180000:120000;
+
+for(let attempt=1;attempt<=retries;attempt++){
+console.log(`[LUAFREE] Attempt ${attempt}/${retries}`);
+
 // Step 1: Create session
+console.log('[LUAFREE] Step 1: Creating session...');
 const step1=await new Promise(resolve=>{
 const req=https.request({
 hostname:'api.luaobfuscator.com',port:443,path:'/v1/obfuscator/newscript',method:'POST',
-headers:{'Content-Type':'text/plain','apikey':LUAFREE_API_KEY}
+headers:{'Content-Type':'text/plain','apikey':LUAFREE_API_KEY,'User-Agent':'DiscordBot/1.0'}
 },res=>{
 let data='';
 res.on('data',c=>data+=c);
 res.on('end',()=>{
-console.log('[LUAFREE] Step 1 Response:',data.substring(0,200));
-try{resolve(JSON.parse(data));}catch(e){resolve({error:'Parse error',raw:data});}
+console.log('[LUAFREE] Step 1 Status:',res.statusCode);
+console.log('[LUAFREE] Step 1 Response:',data.substring(0,300));
+try{
+const parsed=JSON.parse(data);
+resolve(parsed);
+}catch(e){
+resolve({error:'Parse error',raw:data.substring(0,500)});
+}
 });
 });
 req.on('error',e=>resolve({error:e.message}));
-req.setTimeout(60000,()=>{req.destroy();resolve({error:'Timeout creating session'});});
+req.setTimeout(sessionTimeout,()=>{req.destroy();resolve({error:'Timeout creating session'});});
 req.write(cleanScript);
 req.end();
 });
 
 if(!step1.sessionId){
 console.error('[LUAFREE] Step 1 FAILED:',step1);
-return{success:false,error:step1.message||step1.error||'No sessionId',debug:JSON.stringify(step1)};
+if(attempt<retries){
+console.log('[LUAFREE] Retrying in 2s...');
+await new Promise(r=>setTimeout(r,2000));
+continue;
+}
+return{success:false,error:step1.message||step1.error||'No sessionId',debug:JSON.stringify(step1).substring(0,500)};
 }
 
-console.log('[LUAFREE] Step 2: Obfuscating with sessionId:',step1.sessionId);
+console.log('[LUAFREE] ✅ SessionId:',step1.sessionId);
 
-// Step 2: Obfuscate (DIRECT KEYS FORMAT)
+// Delay antara step
+await new Promise(r=>setTimeout(r,1000));
+
+// Step 2: Obfuscate
+console.log('[LUAFREE] Step 2: Obfuscating...');
 const body=JSON.stringify(config);
+console.log('[LUAFREE] Config JSON:',body);
+
 const step2=await new Promise(resolve=>{
 const req=https.request({
 hostname:'api.luaobfuscator.com',port:443,path:'/v1/obfuscator/obfuscate',method:'POST',
-headers:{'Content-Type':'application/json','apikey':LUAFREE_API_KEY,'sessionId':step1.sessionId}
+headers:{
+'Content-Type':'application/json',
+'apikey':LUAFREE_API_KEY,
+'sessionId':step1.sessionId,
+'User-Agent':'DiscordBot/1.0',
+'Content-Length':Buffer.byteLength(body)
+}
 },res=>{
 let data='';
 res.on('data',c=>data+=c);
 res.on('end',()=>{
+console.log('[LUAFREE] Step 2 Status:',res.statusCode);
 console.log('[LUAFREE] Step 2 Response Length:',data.length);
-console.log('[LUAFREE] Step 2 Preview:',data.substring(0,200));
-try{resolve(JSON.parse(data));}catch(e){resolve({error:'Parse error',raw:data});}
+console.log('[LUAFREE] Step 2 Preview:',data.substring(0,300));
+try{
+const parsed=JSON.parse(data);
+resolve(parsed);
+}catch(e){
+resolve({error:'Parse error',raw:data.substring(0,500)});
+}
 });
 });
 req.on('error',e=>resolve({error:e.message}));
-req.setTimeout(120000,()=>{req.destroy();resolve({error:'Timeout obfuscating'});});
+req.setTimeout(obfTimeout,()=>{req.destroy();resolve({error:'Timeout obfuscating'});});
 req.write(body);
 req.end();
 });
 
 if(!step2.code){
 console.error('[LUAFREE] Step 2 FAILED:',step2);
-return{success:false,error:step2.message||step2.error||'No code returned',debug:JSON.stringify(step2)};
+if(attempt<retries&&(step2.message||'').includes('Session')){
+console.log('[LUAFREE] Session error, retrying...');
+await new Promise(r=>setTimeout(r,2000));
+continue;
+}
+return{success:false,error:step2.message||step2.error||'No code returned',debug:JSON.stringify(step2).substring(0,500)};
 }
 
-// ✅ PERBAIKAN: Validasi output
+// Validasi output
 const outputLength=step2.code.length;
 const ratio=(outputLength/originalLength)*100;
 
-console.log('[LUAFREE] Success! Original:',originalLength,'Output:',outputLength,'Ratio:',ratio.toFixed(0)+'%');
+console.log('[LUAFREE] ✅ Success!');
+console.log('[LUAFREE] Original:',originalLength,'bytes');
+console.log('[LUAFREE] Output:',outputLength,'bytes');
+console.log('[LUAFREE] Ratio:',ratio.toFixed(0)+'%');
 
-// ✅ WARNING: Jika MinifiyAll=false tapi output lebih kecil dari input (kemungkinan tidak ter-obfuscate)
-if(!config.MinifiyAll&&outputLength<originalLength*0.9){
-console.warn('[LUAFREE] ⚠️ WARNING: Output lebih kecil dari expected! Mungkin tidak ter-obfuscate dengan benar.');
-console.warn('[LUAFREE] Config yang digunakan:',JSON.stringify(config));
+// CRITICAL: Deteksi jika output mengecil
+if(!config.MinifiyAll&&outputLength<originalLength){
+console.warn('[LUAFREE] ⚠️ CRITICAL WARNING: Output MENGECIL dari original!');
+console.warn('[LUAFREE] Ini kemungkinan MINIFIED bukan OBFUSCATED');
+console.warn('[LUAFREE] Config yang dikirim:',JSON.stringify(config));
+console.warn('[LUAFREE] Preview output:',step2.code.substring(0,500));
+return{success:true,code:step2.code,warning:'OUTPUT_SMALLER'};
+}
+
+// Deteksi jika ratio terlalu rendah untuk preset heavy
+const hasHeavyPlugins=config.Virtualize||config.JunkifyAllIfStatements||config.BytecodeShuffle;
+if(hasHeavyPlugins&&ratio<200){
+console.warn('[LUAFREE] ⚠️ WARNING: Ratio rendah untuk heavy config');
+console.warn('[LUAFREE] Expected >200% tapi dapat',ratio.toFixed(0)+'%');
+return{success:true,code:step2.code,warning:'LOW_RATIO'};
 }
 
 return{success:true,code:step2.code};
+}
+
+return{success:false,error:'All retries failed'};
 }
 
 // ========== JNKIE ==========
