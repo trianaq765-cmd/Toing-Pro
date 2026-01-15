@@ -33,7 +33,7 @@ function log(tag,msg){console.log(`[${new Date().toISOString().substr(11,8)}][${
 // ========== COLORS & HEADERS ==========
 const COLORS={success:0x00ff00,error:0xff0000,warning:0xff9900,info:0x5865F2,primary:0x2ecc71};
 const HEADER={
-prometheus:`--[[\n  Protected by Prometheus\n  ${DISCORD_LINK}\n]]--\n\n`,
+prometheus:`-- This file was protect using Promotheus Obfuscate [https://discord.gg/xjBCMbdp7]  ${DISCORD_LINK}\n]]--\n\n`,
 luafree:`--[[\n  Protected by LuaObfuscator\n  ${DISCORD_LINK}\n]]--\n\n`
 };
 
