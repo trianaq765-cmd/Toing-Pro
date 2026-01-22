@@ -1,4 +1,4 @@
-const{Client,GatewayIntentBits,AttachmentBuilder,ActionRowBuilder,ButtonBuilder,ButtonStyle,EmbedBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,SlashCommandBuilder,REST,Routes}=require('discord.js');
+const{Client,GatewayIntentBits,AttachmentBuilder,ActionRowBuilder,ButtonBuilder,ButtonStyle,EmbedBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,StringSelectMenuBuilder,SlashCommandBuilder,REST,Routes}=require('discord.js');
 const{exec}=require('child_process');const fs=require('fs');const path=require('path');const http=require('http');const https=require('https');const{promisify}=require('util');const execAsync=promisify(exec);
 
 // ========== HTTP SERVER ==========
@@ -13,12 +13,11 @@ const TOKEN=process.env.DISCORD_TOKEN;
 const CLIENT_ID=process.env.CLIENT_ID;
 const PROMETHEUS_PATH=process.env.PROMETHEUS_PATH||'/app/prometheus';
 const JNKIE_API_KEY=process.env.JNKIE_API_KEY||'';
-const LUAFREE_API_KEY=process.env.LUAFREE_API_KEY||'';
 const SERVICE_ID=process.env.JNKIE_SERVICE_ID||'';
 const PROVIDER_ID=process.env.JNKIE_PROVIDER_ID||'';
 const DISCORD_LINK=process.env.DISCORD_LINK||'https://discord.gg/yourinvite';
 const ADMIN_IDS=(process.env.ADMIN_IDS||'').split(',').filter(Boolean);
-const AUTO_REGISTER=process.env.AUTO_REGISTER!=='false'; // Default true
+const AUTO_REGISTER=process.env.AUTO_REGISTER!=='false';
 
 if(!TOKEN){console.error('❌ DISCORD_TOKEN NOT FOUND');process.exit(1);}
 if(!CLIENT_ID){console.error('❌ CLIENT_ID NOT FOUND');process.exit(1);}
@@ -29,68 +28,54 @@ function isAdmin(uid){return ADMIN_IDS.length===0||ADMIN_IDS.includes(String(uid
 function checkConfig(){const e=[];if(!JNKIE_API_KEY)e.push('JNKIE_API_KEY');if(!SERVICE_ID)e.push('JNKIE_SERVICE_ID');if(!PROVIDER_ID)e.push('JNKIE_PROVIDER_ID');return{valid:e.length===0,missing:e};}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 function log(tag,msg){console.log(`[${new Date().toISOString().substr(11,8)}][${tag}] ${msg}`);}
+function formatDate(d){if(!d)return'Never';try{return new Date(d).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'});}catch(e){return d;}}
+function formatSize(b){return b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toFixed(1)+'MB';}
 
-// ========== COLORS & HEADERS ==========
+// ========== COLORS ==========
 const COLORS={success:0x00ff00,error:0xff0000,warning:0xff9900,info:0x5865F2,primary:0x2ecc71};
-const HEADER={
-prometheus:`-- This file was protect using Promotheus Obfuscate [https://discord.gg/xjBCMbdp7]  ${DISCORD_LINK}\n]]--\n\n`,
-luafree:`--[[\n  Protected by LuaObfuscator\n  ${DISCORD_LINK}\n]]--\n\n`
-};
-
-// ========== PRESETS ==========
-const LUAFREE_PRESETS={
-'maximum':{name:'💀 Maximum',desc:'VM + All',cat:'vm',cfg:{MinifiyAll:false,Virtualize:true,EncryptStrings:true,MixedBooleanArithmetic:true,JunkifyAllIfStatements:true,ControlFlowFlattenV1:true,MutateAllLiterals:true,TableIndirection:true,BytecodeShuffle:true,JunkCode:true}},
-'heavy':{name:'😈 Heavy',desc:'VM + Strong',cat:'vm',cfg:{MinifiyAll:false,Virtualize:true,EncryptStrings:true,ControlFlowFlattenV1:true,JunkifyAllIfStatements:true,MutateAllLiterals:true,JunkCode:true}},
-'standard':{name:'🔒 Standard',desc:'VM + Basic',cat:'vm',cfg:{MinifiyAll:false,Virtualize:true,EncryptStrings:true,ControlFlowFlattenV1:true,JunkCode:true}},
-'controlflow':{name:'🌀 ControlFlow',desc:'Heavy CF',cat:'trad',cfg:{MinifiyAll:false,EncryptStrings:true,ControlFlowFlattenV1:true,ControlFlowFlattenV2:true,MutateAllLiterals:true,JunkCode:true}},
-'strings':{name:'🔐 Strings',desc:'String focus',cat:'trad',cfg:{MinifiyAll:false,EncryptStrings:true,MutateAllLiterals:true,TableIndirection:true}},
-'balanced':{name:'⚖️ Balanced',desc:'Balanced',cat:'trad',cfg:{MinifiyAll:false,EncryptStrings:true,ControlFlowFlattenV1:true,MutateAllLiterals:true,JunkCode:true}},
-'light':{name:'✨ Light',desc:'Light',cat:'trad',cfg:{MinifiyAll:false,EncryptStrings:true,MutateAllLiterals:true}},
-'minify':{name:'📄 Minify',desc:'Minify only',cat:'min',cfg:{MinifiyAll:true}}
-};
+const HEADER={prometheus:`-- Protected by Prometheus Obfuscator\n-- ${DISCORD_LINK}\n\n`};
 
 // ========== SLASH COMMANDS ==========
 function buildCommands(){
-const choices=Object.entries(LUAFREE_PRESETS).slice(0,25).map(([k,v])=>({name:`${v.name} - ${v.desc}`,value:k}));
 return[
+// Public
 new SlashCommandBuilder().setName('menu').setDescription('📚 Main Menu'),
 new SlashCommandBuilder().setName('help').setDescription('❓ Help'),
 new SlashCommandBuilder().setName('status').setDescription('📊 Status'),
 new SlashCommandBuilder().setName('invite').setDescription('🔗 Get bot invite link'),
 
-new SlashCommandBuilder().setName('obf').setDescription('🔒 Prometheus Obfuscator').addAttachmentOption(o=>o.setName('file').setDescription('.lua file').setRequired(true)).addStringOption(o=>o.setName('preset').setDescription('Preset').addChoices({name:'Minify',value:'Minify'},{name:'Weak',value:'Weak'},{name:'Medium',value:'Medium'})),
-new SlashCommandBuilder().setName('lua').setDescription('🔒 LuaFree Custom').addAttachmentOption(o=>o.setName('file').setDescription('.lua file').setRequired(true)).addBooleanOption(o=>o.setName('virtualize').setDescription('VM')).addBooleanOption(o=>o.setName('encrypt').setDescription('Encrypt')).addBooleanOption(o=>o.setName('controlflow').setDescription('CF')).addBooleanOption(o=>o.setName('junk').setDescription('Junk')).addBooleanOption(o=>o.setName('mutate').setDescription('Mutate')).addBooleanOption(o=>o.setName('minify').setDescription('Minify')),
-new SlashCommandBuilder().setName('luapreset').setDescription('🔒 LuaFree Preset').addAttachmentOption(o=>o.setName('file').setDescription('.lua file').setRequired(true)).addStringOption(o=>o.setName('preset').setDescription('Preset').setRequired(true).addChoices(...choices)),
-new SlashCommandBuilder().setName('testlua').setDescription('🧪 Test LuaFree'),
-new SlashCommandBuilder().setName('presets').setDescription('📋 Show presets'),
+// Obfuscator
+new SlashCommandBuilder().setName('obf').setDescription('🔒 Prometheus Obfuscator')
+  .addAttachmentOption(o=>o.setName('file').setDescription('.lua file').setRequired(true))
+  .addStringOption(o=>o.setName('preset').setDescription('Preset').addChoices(
+    {name:'Minify',value:'Minify'},
+    {name:'Weak',value:'Weak'},
+    {name:'Medium',value:'Medium'}
+  )),
 
+// Panel
 new SlashCommandBuilder().setName('panel').setDescription('🎛️ Jnkie Panel'),
-new SlashCommandBuilder().setName('keys').setDescription('🔑 View keys'),
-new SlashCommandBuilder().setName('createkey').setDescription('🔑 Create key'),
-new SlashCommandBuilder().setName('config').setDescription('⚙️ Config')
+new SlashCommandBuilder().setName('keys').setDescription('🔑 View all keys'),
+new SlashCommandBuilder().setName('createkey').setDescription('🔑 Quick create key'),
+new SlashCommandBuilder().setName('config').setDescription('⚙️ View configuration'),
+
+// New Key Commands
+new SlashCommandBuilder().setName('searchkey').setDescription('🔍 Search key by value')
+  .addStringOption(o=>o.setName('value').setDescription('Key value to search').setRequired(true)),
+new SlashCommandBuilder().setName('keyinfo').setDescription('📋 View key detail')
+  .addIntegerOption(o=>o.setName('id').setDescription('Key ID').setRequired(true)),
+new SlashCommandBuilder().setName('deletekey').setDescription('🗑️ Delete key')
+  .addIntegerOption(o=>o.setName('id').setDescription('Key ID').setRequired(true)),
+new SlashCommandBuilder().setName('resetkey').setDescription('🔄 Reset key HWID')
+  .addIntegerOption(o=>o.setName('id').setDescription('Key ID').setRequired(true)),
+new SlashCommandBuilder().setName('invalidate').setDescription('🚫 Invalidate key')
+  .addIntegerOption(o=>o.setName('id').setDescription('Key ID').setRequired(true)),
+new SlashCommandBuilder().setName('revalidate').setDescription('✅ Revalidate key')
+  .addIntegerOption(o=>o.setName('id').setDescription('Key ID').setRequired(true)),
 ].map(c=>c.toJSON());
 }
 
 // ========== COMMAND REGISTRATION ==========
-async function clearAllCommands(){
-log('REG','Clearing all commands...');
-const rest=new REST({version:'10'}).setToken(TOKEN);
-try{
-// Clear global
-await rest.put(Routes.applicationCommands(CLIENT_ID),{body:[]});
-log('REG','Global commands cleared');
-
-// Clear per-guild
-for(const[guildId]of client.guilds.cache){
-try{
-await rest.put(Routes.applicationGuildCommands(CLIENT_ID,guildId),{body:[]});
-log('REG',`Guild ${guildId} cleared`);
-}catch(e){log('REG',`Guild ${guildId} skip: ${e.message}`);}
-}
-return{success:true};
-}catch(e){return{success:false,error:e.message};}
-}
-
 async function registerGlobal(){
 log('REG','Registering global commands...');
 const rest=new REST({version:'10'}).setToken(TOKEN);
@@ -99,10 +84,7 @@ const cmds=buildCommands();
 await rest.put(Routes.applicationCommands(CLIENT_ID),{body:cmds});
 log('REG',`${cmds.length} global commands registered`);
 return{success:true,count:cmds.length};
-}catch(e){
-log('REG',`Global failed: ${e.message}`);
-return{success:false,error:e.message};
-}
+}catch(e){return{success:false,error:e.message};}
 }
 
 async function registerGuild(guildId){
@@ -113,36 +95,18 @@ const cmds=buildCommands();
 await rest.put(Routes.applicationGuildCommands(CLIENT_ID,guildId),{body:cmds});
 log('REG',`${cmds.length} commands registered to ${guildId}`);
 return{success:true,count:cmds.length};
-}catch(e){
-log('REG',`Guild ${guildId} failed: ${e.message}`);
-return{success:false,error:e.message};
-}
+}catch(e){return{success:false,error:e.message};}
 }
 
 async function autoRegister(){
-log('REG','=== AUTO REGISTRATION START ===');
-
-// Method 1: Try global first
-log('REG','Trying global registration...');
-const globalResult=await registerGlobal();
-
-if(globalResult.success){
-log('REG','✅ Global registration success!');
-return;
-}
-
+log('REG','=== AUTO REGISTRATION ===');
+const r=await registerGlobal();
+if(r.success)return log('REG','✅ Global registration success!');
 log('REG','Global failed, trying per-guild...');
-
-// Method 2: Per-guild fallback
-let successCount=0;
 for(const[guildId,guild]of client.guilds.cache){
-log('REG',`Registering to: ${guild.name} (${guildId})`);
-const result=await registerGuild(guildId);
-if(result.success)successCount++;
-await sleep(1000); // Rate limit protection
+await registerGuild(guildId);
+await sleep(1000);
 }
-
-log('REG',`=== DONE: ${successCount}/${client.guilds.cache.size} guilds ===`);
 }
 
 // ========== READY ==========
@@ -152,97 +116,29 @@ console.log('╔═════════════════════�
 console.log(`║  Bot: ${client.user.tag.padEnd(31)}║`);
 console.log(`║  Servers: ${String(client.guilds.cache.size).padEnd(28)}║`);
 console.log(`║  Jnkie: ${(JNKIE_API_KEY?'✅':'❌').padEnd(30)}║`);
-console.log(`║  LuaFree: ${(LUAFREE_API_KEY?'✅':'❌').padEnd(28)}║`);
 console.log(`║  Service: ${(SERVICE_ID||'NOT SET').padEnd(28)}║`);
 console.log(`║  Provider: ${(PROVIDER_ID||'NOT SET').padEnd(27)}║`);
-console.log(`║  Admins: ${(ADMIN_IDS.length?ADMIN_IDS.length+' users':'Everyone').padEnd(29)}║`);
 console.log('╚════════════════════════════════════════╝');
 console.log('');
-
-// Auto register
-if(AUTO_REGISTER){
-await sleep(2000); // Wait for cache
-await autoRegister();
-}
-
+if(AUTO_REGISTER){await sleep(2000);await autoRegister();}
 client.user.setActivity('/menu | /help',{type:0});
 });
 
-// ========== GUILD JOIN - Auto register ==========
 client.on('guildCreate',async guild=>{
-log('GUILD',`Joined: ${guild.name} (${guild.id})`);
+log('GUILD',`Joined: ${guild.name}`);
 await sleep(1000);
-const result=await registerGuild(guild.id);
-log('GUILD',result.success?`✅ Commands registered to ${guild.name}`:`❌ Failed: ${result.error}`);
+await registerGuild(guild.id);
 });
 
 // ========== MESSAGE COMMANDS ==========
 client.on('messageCreate',async msg=>{
 if(msg.author.bot)return;
-const content=msg.content.trim().toLowerCase();
+const c=msg.content.trim().toLowerCase();
+if(!isAdmin(msg.author.id))return;
 
-// Admin commands
-if(!isAdmin(msg.author.id)){
-if(content.startsWith('!'))return msg.reply('❌ Admin only').catch(()=>{});
-return;
-}
-
-if(content==='!register'){
-const m=await msg.reply('⏳ Registering to this server...');
-const r=await registerGuild(msg.guild.id);
-await m.edit(r.success?`✅ ${r.count} commands registered!`:`❌ ${r.error}`);
-}
-
-if(content==='!global'){
-const m=await msg.reply('⏳ Registering globally (may take up to 1 hour to propagate)...');
-const r=await registerGlobal();
-await m.edit(r.success?`✅ ${r.count} commands registered globally!\n⚠️ Global commands take up to 1 hour to appear.`:`❌ ${r.error}`);
-}
-
-if(content==='!reset'){
-const m=await msg.reply('⏳ Clearing all commands...');
-const r=await clearAllCommands();
-if(r.success){
-await m.edit('✅ All commands cleared! Re-registering...');
-await sleep(2000);
-const reg=await registerGuild(msg.guild.id);
-await m.edit(reg.success?`✅ Reset complete! ${reg.count} commands registered.`:`✅ Cleared but register failed: ${reg.error}`);
-}else{
-await m.edit(`❌ ${r.error}`);
-}
-}
-
-if(content==='!info'||content==='!config'){
-const check=checkConfig();
-await msg.reply(`\`\`\`
-╔═══════════════════════════════════╗
-║         BOT CONFIGURATION         ║
-╠═══════════════════════════════════╣
-║ Client ID: ${CLIENT_ID.substring(0,18)}...
-║ Jnkie API: ${JNKIE_API_KEY?'✅ Set':'❌ NOT SET'}
-║ Service ID: ${SERVICE_ID||'❌ NOT SET'}
-║ Provider ID: ${PROVIDER_ID||'❌ NOT SET'}
-║ LuaFree API: ${LUAFREE_API_KEY?'✅ Set':'❌ NOT SET'}
-║ Admins: ${ADMIN_IDS.join(',')||'Everyone'}
-║ Status: ${check.valid?'✅ Ready':'❌ Missing: '+check.missing.join(',')}
-╚═══════════════════════════════════╝
-\`\`\``);
-}
-
-if(content==='!invite'){
-const url=`https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&permissions=8&scope=bot%20applications.commands`;
-await msg.reply(`**🔗 Invite Bot:**\n${url}\n\n⚠️ Make sure to include \`applications.commands\` scope!`);
-}
-
-if(content==='!help'){
-await msg.reply(`**Admin Commands:**
-\`!register\` - Register commands to this server
-\`!global\` - Register commands globally
-\`!reset\` - Clear all & re-register
-\`!info\` - Show config
-\`!invite\` - Get invite link
-\`!help\` - This message`);
-}
+if(c==='!register'){const m=await msg.reply('⏳');const r=await registerGuild(msg.guild.id);await m.edit(r.success?`✅ ${r.count} commands registered!`:`❌ ${r.error}`);}
+if(c==='!global'){const m=await msg.reply('⏳');const r=await registerGlobal();await m.edit(r.success?`✅ ${r.count} commands registered globally!`:`❌ ${r.error}`);}
+if(c==='!info'){const ch=checkConfig();await msg.reply(`\`\`\`\nJnkie: ${JNKIE_API_KEY?'✅':'❌'}\nService: ${SERVICE_ID||'❌'}\nProvider: ${PROVIDER_ID||'❌'}\nStatus: ${ch.valid?'✅':'❌ '+ch.missing.join(',')}\n\`\`\``);}
 });
 
 // ========== INTERACTION HANDLER ==========
@@ -266,85 +162,46 @@ const cmd=i.commandName;
 if(cmd==='menu'){
 const adm=isAdmin(i.user.id);
 return i.reply({embeds:[new EmbedBuilder().setTitle('📚 Menu').setColor(COLORS.info)
-.setDescription(adm?`**🔒 Obfuscation** *(Admin)*
-\`/obf\` Prometheus
-\`/lua\` LuaFree Custom
-\`/luapreset\` LuaFree Preset
-\`/testlua\` Test API
-\`/presets\` Show presets
+.setDescription(adm?`**🔒 Obfuscation**
+\`/obf\` - Prometheus
 
-**🎛️ Jnkie** *(Admin)*
-\`/panel\` Management
-\`/keys\` View keys
-\`/createkey\` Quick create
-\`/config\` Configuration
+**🔑 Key Management**
+\`/panel\` - Main Panel
+\`/keys\` - View Keys
+\`/createkey\` - Quick Create
+\`/searchkey\` - Search Key
+\`/keyinfo\` - Key Detail
+\`/deletekey\` - Delete Key
+\`/resetkey\` - Reset HWID
+\`/invalidate\` - Invalidate
+\`/revalidate\` - Revalidate
 
-**📖 Public**
-\`/help\` Help
-\`/status\` Status
-\`/invite\` Invite link`:`**📖 Public Commands**
-\`/help\` - Help
-\`/status\` - Status
-\`/invite\` - Invite link
-
-*Admin commands require ADMIN_IDS*`).setFooter({text:adm?'👑 Admin':'👤 User'})]});
+**⚙️ Config**
+\`/config\` - Configuration
+\`/status\` - Status`:`\`/help\` \`/status\` \`/invite\``)]});
 }
 
-if(cmd==='help'){
-return i.reply({embeds:[new EmbedBuilder().setTitle('❓ Help').setColor(COLORS.info)
-.setDescription(`**Public:** /menu, /help, /status, /invite
-**Admin:** /obf, /lua, /luapreset, /panel, /keys, /createkey
-**Text:** !register, !global, !reset, !info, !invite`)]});
-}
-
+if(cmd==='help')return i.reply({embeds:[new EmbedBuilder().setTitle('❓ Help').setColor(COLORS.info).setDescription('Use `/menu` to see all commands')]});
 if(cmd==='status'){
 await i.deferReply();
-let jStatus='❌';
-if(checkConfig().valid){const r=await jnkieReq('GET','/services');jStatus=r.ok?'✅':'⚠️';}
-return i.editReply({embeds:[new EmbedBuilder().setTitle('📊 Status').setColor(COLORS.primary)
-.addFields({name:'Bot',value:'✅',inline:true},{name:'Jnkie',value:jStatus,inline:true},{name:'LuaFree',value:LUAFREE_API_KEY?'✅':'❌',inline:true})]});
+const r=checkConfig().valid?await jnkieReq('GET','/services'):{ok:false};
+return i.editReply({embeds:[new EmbedBuilder().setTitle('📊 Status').setColor(COLORS.primary).addFields({name:'Bot',value:'✅',inline:true},{name:'Jnkie',value:r.ok?'✅':'❌',inline:true})]});
 }
-
-if(cmd==='invite'){
-const url=`https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&permissions=8&scope=bot%20applications.commands`;
-return i.reply({embeds:[new EmbedBuilder().setTitle('🔗 Invite Bot').setColor(COLORS.info)
-.setDescription(`[Click here to invite](${url})\n\n⚠️ **Important:** Make sure both \`bot\` and \`applications.commands\` scopes are included!`)]});
-}
+if(cmd==='invite')return i.reply({embeds:[new EmbedBuilder().setTitle('🔗 Invite').setColor(COLORS.info).setDescription(`[Click to invite](https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&permissions=8&scope=bot%20applications.commands)`)]});
 
 // === ADMIN CHECK ===
-const adminCmds=['obf','lua','luapreset','testlua','presets','panel','keys','createkey','config'];
-if(adminCmds.includes(cmd)&&!isAdmin(i.user.id)){
-return i.reply({content:'❌ **Admin Only!**\n\nContact server admin or set `ADMIN_IDS` environment variable.',ephemeral:true});
-}
+if(!isAdmin(i.user.id))return i.reply({content:'❌ Admin only',ephemeral:true});
 
 // === CONFIG ===
 if(cmd==='config'){
 const c=checkConfig();
 return i.reply({embeds:[new EmbedBuilder().setTitle('⚙️ Config').setColor(c.valid?COLORS.success:COLORS.error)
-.addFields({name:'Jnkie API',value:JNKIE_API_KEY?'✅':'❌',inline:true},{name:'Service',value:SERVICE_ID||'❌',inline:true},{name:'Provider',value:PROVIDER_ID||'❌',inline:true},{name:'LuaFree',value:LUAFREE_API_KEY?'✅':'❌',inline:true},{name:'Status',value:c.valid?'✅ Ready':'❌ '+c.missing.join(', ')})],ephemeral:true});
-}
-
-// === PRESETS ===
-if(cmd==='presets'){
-const vm=Object.entries(LUAFREE_PRESETS).filter(([,v])=>v.cat==='vm').map(([,v])=>`${v.name}: ${v.desc}`).join('\n');
-const tr=Object.entries(LUAFREE_PRESETS).filter(([,v])=>v.cat==='trad').map(([,v])=>`${v.name}: ${v.desc}`).join('\n');
-return i.reply({embeds:[new EmbedBuilder().setTitle('📋 Presets').setColor(COLORS.info)
-.addFields({name:'🖥️ VM-Based',value:vm},{name:'📝 Traditional',value:tr},{name:'📄 Utility',value:'Minify: Size reduction'})]});
-}
-
-// === TEST LUA ===
-if(cmd==='testlua'){
-if(!LUAFREE_API_KEY)return i.reply({content:'⚠️ LUAFREE_API_KEY not set',ephemeral:true});
-await i.deferReply();
-const test='local x="test";print(x);return x';
-const r=await luaFreeObf(test,{MinifiyAll:false,Virtualize:true,EncryptStrings:true,JunkCode:true});
-if(r.success){
-const ratio=((r.code.length/test.length)*100).toFixed(0);
-return i.editReply({embeds:[new EmbedBuilder().setTitle('🧪 Test').setColor(ratio>200?COLORS.success:COLORS.warning)
-.addFields({name:'Status',value:ratio>200?'✅':'⚠️',inline:true},{name:'Ratio',value:`${ratio}%`,inline:true})
-.setDescription(`\`\`\`lua\n${r.code.substring(0,300)}...\n\`\`\``)]});
-}
-return i.editReply(`❌ ${r.error}\n\`\`\`${r.debug||''}\`\`\``);
+.addFields(
+{name:'Jnkie API',value:JNKIE_API_KEY?'✅ Set':'❌',inline:true},
+{name:'Service ID',value:SERVICE_ID||'❌',inline:true},
+{name:'Provider ID',value:PROVIDER_ID||'❌',inline:true},
+{name:'Status',value:c.valid?'✅ Ready':'❌ Missing: '+c.missing.join(', ')}
+)],ephemeral:true});
 }
 
 // === PROMETHEUS ===
@@ -357,229 +214,480 @@ const script=await downloadFile(file.url);
 const r=await prometheusObf(script,preset);
 if(r.success){
 const code=HEADER.prometheus+r.code;
-return i.editReply({embeds:[new EmbedBuilder().setTitle('✅ Prometheus').setColor(COLORS.success).addFields({name:'Preset',value:preset,inline:true},{name:'Size',value:`${formatSize(script.length)}→${formatSize(code.length)}`,inline:true})],files:[new AttachmentBuilder(Buffer.from(code,'utf8'),{name:`obf_${Date.now()}.lua`})]});
+return i.editReply({embeds:[new EmbedBuilder().setTitle('✅ Prometheus').setColor(COLORS.success).addFields({name:'Preset',value:preset,inline:true},{name:'Size',value:`${formatSize(script.length)} → ${formatSize(code.length)}`,inline:true})],files:[new AttachmentBuilder(Buffer.from(code,'utf8'),{name:`obf_${Date.now()}.lua`})]});
 }
 return i.editReply(`❌ ${r.error}`);
-}
-
-// === LUA CUSTOM ===
-if(cmd==='lua'){
-if(!LUAFREE_API_KEY)return i.reply({content:'⚠️ LUAFREE_API_KEY not set',ephemeral:true});
-const file=i.options.getAttachment('file');
-if(!file.name.endsWith('.lua'))return i.reply({content:'❌ .lua only',ephemeral:true});
-
-const cfg={MinifiyAll:false};
-if(i.options.getBoolean('minify'))cfg.MinifiyAll=true;
-if(i.options.getBoolean('virtualize'))cfg.Virtualize=true;
-if(i.options.getBoolean('encrypt'))cfg.EncryptStrings=true;
-if(i.options.getBoolean('controlflow'))cfg.ControlFlowFlattenV1=true;
-if(i.options.getBoolean('junk'))cfg.JunkCode=true;
-if(i.options.getBoolean('mutate'))cfg.MutateAllLiterals=true;
-
-if(Object.keys(cfg).filter(k=>cfg[k]&&k!=='MinifiyAll').length===0&&!cfg.MinifiyAll){
-cfg.EncryptStrings=true;cfg.ControlFlowFlattenV1=true;cfg.MutateAllLiterals=true;
-}
-
-await i.deferReply();
-const script=await downloadFile(file.url);
-const r=await luaFreeObf(script,cfg);
-if(r.success){
-const code=HEADER.luafree+(cfg.Virtualize?r.code:formatCode(r.code));
-const ratio=((code.length/script.length)*100).toFixed(0);
-return i.editReply({embeds:[new EmbedBuilder().setTitle(r.warning?'⚠️ LuaFree':'✅ LuaFree').setColor(r.warning?COLORS.warning:COLORS.success).addFields({name:'Plugins',value:Object.keys(cfg).filter(k=>cfg[k]).join(', ')},{name:'Size',value:`${formatSize(script.length)}→${formatSize(code.length)} (${ratio}%)`,inline:true})],files:[new AttachmentBuilder(Buffer.from(code,'utf8'),{name:`lua_${Date.now()}.lua`})]});
-}
-return i.editReply(`❌ ${r.error}\n\`\`\`${r.debug||''}\`\`\``);
-}
-
-// === LUA PRESET ===
-if(cmd==='luapreset'){
-if(!LUAFREE_API_KEY)return i.reply({content:'⚠️ LUAFREE_API_KEY not set',ephemeral:true});
-const file=i.options.getAttachment('file');
-const key=i.options.getString('preset');
-if(!file.name.endsWith('.lua'))return i.reply({content:'❌ .lua only',ephemeral:true});
-const preset=LUAFREE_PRESETS[key];
-if(!preset)return i.reply({content:'❌ Invalid preset',ephemeral:true});
-
-await i.deferReply();
-const script=await downloadFile(file.url);
-const r=await luaFreeObf(script,preset.cfg);
-if(r.success){
-const isVM=preset.cfg.Virtualize;
-const code=HEADER.luafree+(isVM?r.code:formatCode(r.code));
-const ratio=((code.length/script.length)*100).toFixed(0);
-return i.editReply({embeds:[new EmbedBuilder().setTitle(r.warning?'⚠️ LuaFree':'✅ LuaFree').setColor(r.warning?COLORS.warning:COLORS.success).addFields({name:'Preset',value:preset.name,inline:true},{name:'Type',value:isVM?'🖥️ VM':'📝 Traditional',inline:true},{name:'Size',value:`${formatSize(script.length)}→${formatSize(code.length)} (${ratio}%)`,inline:true})],files:[new AttachmentBuilder(Buffer.from(code,'utf8'),{name:`lua_${key}_${Date.now()}.lua`})]});
-}
-return i.editReply(`❌ ${r.error}\n\`\`\`${r.debug||''}\`\`\``);
 }
 
 // === PANEL ===
 if(cmd==='panel'){
 const c=checkConfig();
 if(!c.valid)return i.reply({content:`⚠️ Missing: ${c.missing.join(', ')}`,ephemeral:true});
-return i.reply({embeds:[new EmbedBuilder().setTitle('🎛️ Panel').setColor(COLORS.info).setDescription(`**Service:** \`${SERVICE_ID}\`\n**Provider:** \`${PROVIDER_ID}\``)],components:panelBtns()});
+return i.reply({embeds:[new EmbedBuilder().setTitle('🎛️ Jnkie Panel').setColor(COLORS.info).setDescription(`**Service ID:** \`${SERVICE_ID}\`\n**Provider ID:** \`${PROVIDER_ID}\``)],components:panelButtons()});
 }
 
-// === KEYS ===
+// === KEYS LIST ===
 if(cmd==='keys'){
-const c=checkConfig();if(!c.valid)return i.reply({content:`⚠️ Missing: ${c.missing.join(', ')}`,ephemeral:true});
+const c=checkConfig();
+if(!c.valid)return i.reply({content:`⚠️ Missing: ${c.missing.join(', ')}`,ephemeral:true});
 await i.deferReply();
-const r=await jnkieReq('GET',`/keys?service_id=${safeInt(SERVICE_ID)}&limit=100`);
-if(!r.ok)return i.editReply(`❌\n\`\`\`json\n${JSON.stringify(r.data||r.error,null,2).substring(0,1500)}\n\`\`\``);
-const keys=r.data?.keys||[];
-if(!keys.length)return i.editReply({embeds:[new EmbedBuilder().setTitle('🔑 Keys').setColor(COLORS.warning).setDescription('No keys')]});
-const preview=keys.slice(0,5).map((k,i)=>`**#${i+1}** ID:\`${k.id}\`\n\`\`\`${k.key_value}\`\`\``).join('\n');
-const file=keys.map((k,i)=>`#${i+1} | ID:${k.id}\n${k.key_value}\nHWID:${k.hwids?.length||0}/${k.max_hwids||3}`).join('\n\n');
-return i.editReply({embeds:[new EmbedBuilder().setTitle(`🔑 Keys (${keys.length})`).setColor(COLORS.primary).setDescription(preview+'\n\n📎 Download for all')],files:[new AttachmentBuilder(Buffer.from(file,'utf8'),{name:'keys.txt'})],components:keyBtns()});
+return i.editReply(await getKeysEmbed());
 }
 
 // === CREATE KEY ===
 if(cmd==='createkey'){
-const c=checkConfig();if(!c.valid)return i.reply({content:`⚠️ Missing: ${c.missing.join(', ')}`,ephemeral:true});
+const c=checkConfig();
+if(!c.valid)return i.reply({content:`⚠️ Missing: ${c.missing.join(', ')}`,ephemeral:true});
 await i.deferReply();
-const sid=safeInt(SERVICE_ID),pid=safeInt(PROVIDER_ID);
-log('KEY',`Creating: service_id=${sid}, provider_id=${pid}`);
-const r=await jnkieReq('POST','/keys',{service_id:sid,provider_id:pid,note:'Quick',max_hwids:3});
-if(!r.ok)return i.editReply(`❌\n\`\`\`json\n${JSON.stringify(r.data||r.error,null,2).substring(0,1500)}\n\`\`\``);
+const r=await jnkieReq('POST','/keys',{service_id:safeInt(SERVICE_ID),provider_id:safeInt(PROVIDER_ID),note:'Quick Create',hwid_limit:3});
+if(!r.ok)return i.editReply(`❌ Error: ${JSON.stringify(r.data)}`);
 const key=r.data?.key?.key_value||r.data?.key_value||'N/A';
-return i.editReply({embeds:[new EmbedBuilder().setTitle('✅ Created').setColor(COLORS.success).setDescription(`\`\`\`\n${key}\n\`\`\``)]});
+return i.editReply({embeds:[new EmbedBuilder().setTitle('✅ Key Created').setColor(COLORS.success).setDescription(`\`\`\`${key}\`\`\``).addFields({name:'ID',value:String(r.data?.key?.id||r.data?.id||'N/A'),inline:true},{name:'HWID Limit',value:'3',inline:true})]});
+}
+
+// === SEARCH KEY ===
+if(cmd==='searchkey'){
+const c=checkConfig();
+if(!c.valid)return i.reply({content:`⚠️ Missing: ${c.missing.join(', ')}`,ephemeral:true});
+const value=i.options.getString('value');
+await i.deferReply();
+const r=await jnkieReq('GET',`/keys?service_id=${safeInt(SERVICE_ID)}&key_value=${encodeURIComponent(value)}`);
+if(!r.ok)return i.editReply(`❌ Error: ${r.error||JSON.stringify(r.data)}`);
+const keys=r.data?.keys||[];
+if(!keys.length)return i.editReply({embeds:[new EmbedBuilder().setTitle('🔍 Search Result').setColor(COLORS.warning).setDescription('No keys found')]});
+return i.editReply(buildKeyDetailEmbed(keys[0]));
+}
+
+// === KEY INFO ===
+if(cmd==='keyinfo'){
+const c=checkConfig();
+if(!c.valid)return i.reply({content:`⚠️ Missing: ${c.missing.join(', ')}`,ephemeral:true});
+const id=i.options.getInteger('id');
+await i.deferReply();
+const r=await jnkieReq('GET',`/keys/${id}`);
+if(!r.ok)return i.editReply(`❌ Key not found or error`);
+return i.editReply(buildKeyDetailEmbed(r.data?.key||r.data));
+}
+
+// === DELETE KEY ===
+if(cmd==='deletekey'){
+const id=i.options.getInteger('id');
+await i.deferReply();
+const r=await jnkieReq('DELETE',`/keys/${id}`);
+return i.editReply(r.ok?{embeds:[new EmbedBuilder().setTitle('✅ Deleted').setColor(COLORS.success).setDescription(`Key ID \`${id}\` has been deleted`)]}:`❌ Failed: ${JSON.stringify(r.data)}`);
+}
+
+// === RESET KEY HWID ===
+if(cmd==='resetkey'){
+const id=i.options.getInteger('id');
+await i.deferReply();
+const r=await jnkieReq('DELETE',`/keys/${id}/hwids`);
+return i.editReply(r.ok?{embeds:[new EmbedBuilder().setTitle('✅ HWID Reset').setColor(COLORS.success).setDescription(`All HWIDs removed from key ID \`${id}\``)]}:`❌ Failed: ${JSON.stringify(r.data)}`);
+}
+
+// === INVALIDATE KEY ===
+if(cmd==='invalidate'){
+const id=i.options.getInteger('id');
+await i.deferReply();
+const r=await jnkieReq('PATCH',`/keys/${id}`,{is_invalidated:true});
+return i.editReply(r.ok?{embeds:[new EmbedBuilder().setTitle('🚫 Invalidated').setColor(COLORS.warning).setDescription(`Key ID \`${id}\` is now invalid`)]}:`❌ Failed: ${JSON.stringify(r.data)}`);
+}
+
+// === REVALIDATE KEY ===
+if(cmd==='revalidate'){
+const id=i.options.getInteger('id');
+await i.deferReply();
+const r=await jnkieReq('PATCH',`/keys/${id}`,{is_invalidated:false});
+return i.editReply(r.ok?{embeds:[new EmbedBuilder().setTitle('✅ Revalidated').setColor(COLORS.success).setDescription(`Key ID \`${id}\` is now active`)]}:`❌ Failed: ${JSON.stringify(r.data)}`);
 }
 }
 
-// ========== BUTTONS ==========
-function panelBtns(){return[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('p_keys').setLabel('🔑 Keys').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('p_services').setLabel('📦 Services').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('p_providers').setLabel('🏢 Providers').setStyle(ButtonStyle.Primary)),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('p_status').setLabel('📊').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('p_refresh').setLabel('🔄').setStyle(ButtonStyle.Secondary))];}
-function keyBtns(){return[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('k_create').setLabel('➕').setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId('k_batch').setLabel('📦 Batch').setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId('k_refresh').setLabel('🔄').setStyle(ButtonStyle.Primary)),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('k_delete').setLabel('🗑️').setStyle(ButtonStyle.Danger),new ButtonBuilder().setCustomId('k_reset').setLabel('Reset HWID').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('k_export').setLabel('📥').setStyle(ButtonStyle.Secondary))];}
-function serviceBtns(){return[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('s_list').setLabel('📋').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('s_create').setLabel('➕').setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId('s_delete').setLabel('🗑️').setStyle(ButtonStyle.Danger),new ButtonBuilder().setCustomId('p_home').setLabel('⬅️').setStyle(ButtonStyle.Secondary))];}
-function providerBtns(){return[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('pr_list').setLabel('📋').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('pr_create').setLabel('➕').setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId('pr_delete').setLabel('🗑️').setStyle(ButtonStyle.Danger),new ButtonBuilder().setCustomId('p_home').setLabel('⬅️').setStyle(ButtonStyle.Secondary))];}
+// ========== BUTTON BUILDERS ==========
+function panelButtons(){
+return[
+new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId('p_keys').setLabel('🔑 Keys').setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId('p_services').setLabel('📦 Services').setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId('p_providers').setLabel('🏭 Providers').setStyle(ButtonStyle.Primary)
+)
+];
+}
 
+function keyButtons(){
+return[
+new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId('k_create').setLabel('➕ Create').setStyle(ButtonStyle.Success),
+new ButtonBuilder().setCustomId('k_batch').setLabel('📦 Batch').setStyle(ButtonStyle.Success),
+new ButtonBuilder().setCustomId('k_advanced').setLabel('⚙️ Advanced').setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId('k_refresh').setLabel('🔄 Refresh').setStyle(ButtonStyle.Secondary)
+),
+new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId('k_search').setLabel('🔍 Search').setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId('k_detail').setLabel('📋 Detail').setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId('k_delete').setLabel('🗑️ Delete').setStyle(ButtonStyle.Danger),
+new ButtonBuilder().setCustomId('k_export').setLabel('📤 Export').setStyle(ButtonStyle.Secondary)
+),
+new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId('k_invalidate').setLabel('🚫 Invalidate').setStyle(ButtonStyle.Danger),
+new ButtonBuilder().setCustomId('k_revalidate').setLabel('✅ Revalidate').setStyle(ButtonStyle.Success),
+new ButtonBuilder().setCustomId('k_resethwid').setLabel('🔄 Reset HWID').setStyle(ButtonStyle.Danger),
+new ButtonBuilder().setCustomId('k_removehwid').setLabel('❌ Remove HWID').setStyle(ButtonStyle.Danger)
+)
+];
+}
+
+function serviceButtons(){
+return[new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId('s_list').setLabel('📋 List').setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId('s_create').setLabel('➕ Create').setStyle(ButtonStyle.Success),
+new ButtonBuilder().setCustomId('s_delete').setLabel('🗑️ Delete').setStyle(ButtonStyle.Danger),
+new ButtonBuilder().setCustomId('p_back').setLabel('⬅️ Back').setStyle(ButtonStyle.Secondary)
+)];
+}
+
+function providerButtons(){
+return[new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId('pr_list').setLabel('📋 List').setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId('pr_create').setLabel('➕ Create').setStyle(ButtonStyle.Success),
+new ButtonBuilder().setCustomId('pr_delete').setLabel('🗑️ Delete').setStyle(ButtonStyle.Danger),
+new ButtonBuilder().setCustomId('p_back').setLabel('⬅️ Back').setStyle(ButtonStyle.Secondary)
+)];
+}
+
+function keyActionButtons(keyId){
+return[new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId(`ka_reset_${keyId}`).setLabel('🔄 Reset HWID').setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId(`ka_inv_${keyId}`).setLabel('🚫 Invalidate').setStyle(ButtonStyle.Danger),
+new ButtonBuilder().setCustomId(`ka_del_${keyId}`).setLabel('🗑️ Delete').setStyle(ButtonStyle.Danger),
+new ButtonBuilder().setCustomId('k_refresh').setLabel('⬅️ Back').setStyle(ButtonStyle.Secondary)
+)];
+}
+
+// ========== EMBEDS ==========
+async function getKeysEmbed(){
+const r=await jnkieReq('GET',`/keys?service_id=${safeInt(SERVICE_ID)}&limit=100`);
+if(!r.ok)return{content:`❌ Error: ${r.error||JSON.stringify(r.data)}`};
+const keys=r.data?.keys||[];
+if(!keys.length)return{embeds:[new EmbedBuilder().setTitle('🔑 Keys').setColor(COLORS.warning).setDescription('No keys found')],components:keyButtons()};
+
+const active=keys.filter(k=>!k.is_invalidated).length;
+const invalid=keys.filter(k=>k.is_invalidated).length;
+
+const preview=keys.slice(0,10).map((k,i)=>{
+const status=k.is_invalidated?'🚫':'✅';
+const hwid=k.hwids?.length||0;
+const limit=k.hwid_limit||'∞';
+return`${status} \`${k.id}\` | ${k.key_value.substring(0,20)}... | HWID: ${hwid}/${limit}`;
+}).join('\n');
+
+const file=keys.map(k=>`ID: ${k.id}\nKey: ${k.key_value}\nStatus: ${k.is_invalidated?'Invalid':'Active'}\nHWID: ${k.hwids?.length||0}/${k.hwid_limit||'∞'}\nCreated: ${k.created_at}\n`).join('\n---\n');
+
+return{
+embeds:[new EmbedBuilder().setTitle(`🔑 Keys (${keys.length})`).setColor(COLORS.primary)
+.addFields({name:'Active',value:String(active),inline:true},{name:'Invalid',value:String(invalid),inline:true},{name:'Total',value:String(keys.length),inline:true})
+.setDescription(preview)],
+files:[new AttachmentBuilder(Buffer.from(file,'utf8'),{name:'keys.txt'})],
+components:keyButtons()
+};
+}
+
+function buildKeyDetailEmbed(key){
+if(!key)return{content:'❌ Key not found'};
+
+const status=key.is_invalidated?'🚫 Invalidated':'✅ Active';
+const premium=key.is_premium?'✅':'❌';
+const oneTime=key.one_time_use?'✅':'❌';
+const noHwid=key.no_hwid?'✅':'❌';
+const expiryFirst=key.expiry_on_first_use?'✅':'❌';
+
+const hwids=key.hwids||[];
+const hwidList=hwids.length?hwids.map(h=>`• \`${h.hwid}\` (${h.bound_by}) - ${formatDate(h.bound_at)}`).join('\n'):'No HWIDs bound';
+
+const embed=new EmbedBuilder()
+.setTitle(`🔑 Key Detail`)
+.setColor(key.is_invalidated?COLORS.error:COLORS.success)
+.setDescription(`\`\`\`${key.key_value}\`\`\``)
+.addFields(
+{name:'ID',value:String(key.id),inline:true},
+{name:'Status',value:status,inline:true},
+{name:'Premium',value:premium,inline:true},
+{name:'Service',value:key.service_name||String(key.service_id)||'N/A',inline:true},
+{name:'Provider',value:key.provider_name||String(key.provider_id)||'N/A',inline:true},
+{name:'HWID Limit',value:key.hwid_limit?String(key.hwid_limit):'Unlimited',inline:true},
+{name:'One-Time Use',value:oneTime,inline:true},
+{name:'No HWID',value:noHwid,inline:true},
+{name:'Expiry on First Use',value:expiryFirst,inline:true},
+{name:'Validity',value:key.validity_minutes?`${key.validity_minutes} mins`:'Forever',inline:true},
+{name:'Expires At',value:formatDate(key.expires_at),inline:true},
+{name:'Used At',value:formatDate(key.used_at),inline:true},
+{name:'Discord ID',value:key.discord_id||'None',inline:true},
+{name:'Key Name',value:key.key_name||'None',inline:true},
+{name:'Created',value:formatDate(key.created_at),inline:true},
+{name:`📱 HWIDs (${hwids.length}/${key.hwid_limit||'∞'})`,value:hwidList}
+);
+
+return{embeds:[embed],components:keyActionButtons(key.id)};
+}
+
+// ========== BUTTON HANDLER ==========
 async function handleButton(i){
 const id=i.customId;
 if(!isAdmin(i.user.id))return i.reply({content:'❌ Admin only',ephemeral:true});
 
-// Panel nav
-if(id==='p_home')return i.update({embeds:[new EmbedBuilder().setTitle('🎛️ Panel').setColor(COLORS.info).setDescription(`Service: \`${SERVICE_ID}\`\nProvider: \`${PROVIDER_ID}\``)],components:panelBtns()});
-if(id==='p_keys')return i.update({embeds:[new EmbedBuilder().setTitle('🔑 Keys').setColor(COLORS.primary)],components:keyBtns()});
-if(id==='p_services')return i.update({embeds:[new EmbedBuilder().setTitle('📦 Services').setColor(COLORS.info)],components:serviceBtns()});
-if(id==='p_providers')return i.update({embeds:[new EmbedBuilder().setTitle('🏢 Providers').setColor(COLORS.info)],components:providerBtns()});
-if(id==='p_status'){await i.deferUpdate();const r=await jnkieReq('GET','/services');return i.editReply({embeds:[new EmbedBuilder().setTitle('📊').setColor(r.ok?COLORS.success:COLORS.error).addFields({name:'API',value:r.ok?'✅':'❌'})],components:panelBtns()});}
-if(id==='p_refresh'){await i.deferUpdate();return i.editReply({embeds:[new EmbedBuilder().setTitle('🎛️ Panel').setColor(COLORS.info).setDescription(`Service: \`${SERVICE_ID}\`\nProvider: \`${PROVIDER_ID}\``)],components:panelBtns()});}
+// Panel Navigation
+if(id==='p_keys'){await i.deferUpdate();return i.editReply(await getKeysEmbed());}
+if(id==='p_services')return i.update({embeds:[new EmbedBuilder().setTitle('📦 Services').setColor(COLORS.info)],components:serviceButtons()});
+if(id==='p_providers')return i.update({embeds:[new EmbedBuilder().setTitle('🏭 Providers').setColor(COLORS.info)],components:providerButtons()});
+if(id==='p_back')return i.update({embeds:[new EmbedBuilder().setTitle('🎛️ Panel').setColor(COLORS.info).setDescription(`Service: \`${SERVICE_ID}\`\nProvider: \`${PROVIDER_ID}\``)],components:panelButtons()});
 
-// Keys
-if(id==='k_refresh'){
-await i.deferUpdate();
-const r=await jnkieReq('GET',`/keys?service_id=${safeInt(SERVICE_ID)}&limit=100`);
-const keys=r.data?.keys||[];
-const preview=keys.slice(0,5).map((k,idx)=>`**#${idx+1}** \`${k.id}\`\n\`\`\`${k.key_value}\`\`\``).join('\n');
-const file=keys.map((k,idx)=>`#${idx+1} | ID:${k.id}\n${k.key_value}`).join('\n\n');
-return i.editReply({embeds:[new EmbedBuilder().setTitle(`🔑 Keys (${keys.length})`).setColor(COLORS.primary).setDescription(preview||'None')],files:keys.length?[new AttachmentBuilder(Buffer.from(file,'utf8'),{name:'keys.txt'})]:undefined,components:keyBtns()});
-}
-if(id==='k_create'){return i.showModal(new ModalBuilder().setCustomId('m_k_create').setTitle('Create Key').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('note').setLabel('Note').setStyle(TextInputStyle.Short).setRequired(false)),new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hwid').setLabel('Max HWID').setStyle(TextInputStyle.Short).setValue('3').setRequired(false))));}
-if(id==='k_batch'){return i.showModal(new ModalBuilder().setCustomId('m_k_batch').setTitle('Batch').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('count').setLabel('Count').setStyle(TextInputStyle.Short).setValue('5').setRequired(true)),new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hwid').setLabel('Max HWID').setStyle(TextInputStyle.Short).setValue('3').setRequired(false))));}
-if(id==='k_delete'){return i.showModal(new ModalBuilder().setCustomId('m_k_delete').setTitle('Delete').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('id').setLabel('Key ID').setStyle(TextInputStyle.Short).setRequired(true))));}
-if(id==='k_reset'){return i.showModal(new ModalBuilder().setCustomId('m_k_reset').setTitle('Reset HWID').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('id').setLabel('Key ID').setStyle(TextInputStyle.Short).setRequired(true))));}
+// Keys Actions
+if(id==='k_refresh'){await i.deferUpdate();return i.editReply(await getKeysEmbed());}
 if(id==='k_export'){
 await i.deferUpdate();
-const r=await jnkieReq('GET',`/keys?service_id=${safeInt(SERVICE_ID)}&limit=500`);
+const r=await jnkieReq('GET',`/keys?service_id=${safeInt(SERVICE_ID)}&limit=1000`);
 const keys=r.data?.keys||[];
-const list=keys.map(k=>k.key_value).join('\n');
-return i.editReply({embeds:[new EmbedBuilder().setTitle(`📥 ${keys.length}`).setColor(COLORS.success)],files:[new AttachmentBuilder(Buffer.from(list,'utf8'),{name:'export.txt'})],components:keyBtns()});
+const csv='ID,Key,Status,HWID_Count,HWID_Limit,Created\n'+keys.map(k=>`${k.id},"${k.key_value}",${k.is_invalidated?'Invalid':'Active'},${k.hwids?.length||0},${k.hwid_limit||'unlimited'},${k.created_at}`).join('\n');
+return i.followUp({files:[new AttachmentBuilder(Buffer.from(csv,'utf8'),{name:`keys_export_${Date.now()}.csv`})]});
 }
 
+// Modal Triggers
+if(id==='k_create')return showModal(i,'m_k_create','➕ Create Key',[{id:'note',label:'Note',required:false}]);
+if(id==='k_batch')return showModal(i,'m_k_batch','📦 Batch Create',[{id:'count',label:'Count (max 50)',value:'5'}]);
+if(id==='k_search')return showModal(i,'m_k_search','🔍 Search Key',[{id:'value',label:'Key Value'}]);
+if(id==='k_detail')return showModal(i,'m_k_detail','📋 Key Detail',[{id:'id',label:'Key ID'}]);
+if(id==='k_delete')return showModal(i,'m_k_delete','🗑️ Delete Key',[{id:'id',label:'Key ID'}]);
+if(id==='k_invalidate')return showModal(i,'m_k_invalidate','🚫 Invalidate Key',[{id:'id',label:'Key ID'}]);
+if(id==='k_revalidate')return showModal(i,'m_k_revalidate','✅ Revalidate Key',[{id:'id',label:'Key ID'}]);
+if(id==='k_resethwid')return showModal(i,'m_k_resethwid','🔄 Reset HWID',[{id:'id',label:'Key ID'}]);
+if(id==='k_removehwid')return showModal(i,'m_k_removehwid','❌ Remove HWID',[{id:'id',label:'Key ID'},{id:'hwid',label:'HWID to remove'}]);
+if(id==='k_advanced')return showAdvancedKeyModal(i);
+
+// Quick Actions from Detail
+if(id.startsWith('ka_reset_')){const keyId=id.split('_')[2];await i.deferUpdate();const r=await jnkieReq('DELETE',`/keys/${keyId}/hwids`);return i.followUp({content:r.ok?'✅ HWID Reset':'❌ Failed',ephemeral:true});}
+if(id.startsWith('ka_inv_')){const keyId=id.split('_')[2];await i.deferUpdate();const r=await jnkieReq('PATCH',`/keys/${keyId}`,{is_invalidated:true});return i.followUp({content:r.ok?'🚫 Invalidated':'❌ Failed',ephemeral:true});}
+if(id.startsWith('ka_del_')){const keyId=id.split('_')[2];await i.deferUpdate();const r=await jnkieReq('DELETE',`/keys/${keyId}`);if(r.ok)return i.editReply(await getKeysEmbed());return i.followUp({content:'❌ Failed',ephemeral:true});}
+
 // Services
-if(id==='s_list'){await i.deferUpdate();const r=await jnkieReq('GET','/services');const list=(r.data?.services||[]).map(s=>`\`${s.id}\` ${s.name}`).join('\n');return i.editReply({embeds:[new EmbedBuilder().setTitle('📦').setColor(COLORS.info).setDescription(list||'None')],components:serviceBtns()});}
-if(id==='s_create'){return i.showModal(new ModalBuilder().setCustomId('m_s_create').setTitle('Create').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('name').setLabel('Name').setStyle(TextInputStyle.Short).setRequired(true))));}
-if(id==='s_delete'){return i.showModal(new ModalBuilder().setCustomId('m_s_delete').setTitle('Delete').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('id').setLabel('ID').setStyle(TextInputStyle.Short).setRequired(true))));}
+if(id==='s_list'){await i.deferUpdate();const r=await jnkieReq('GET','/services');const list=(r.data?.services||[]).map(s=>`\`${s.id}\` - ${s.name}`).join('\n');return i.editReply({embeds:[new EmbedBuilder().setTitle('📦 Services').setColor(COLORS.info).setDescription(list||'None')],components:serviceButtons()});}
+if(id==='s_create')return showModal(i,'m_s_create','➕ Create Service',[{id:'name',label:'Service Name'},{id:'desc',label:'Description',required:false}]);
+if(id==='s_delete')return showModal(i,'m_s_delete','🗑️ Delete Service',[{id:'id',label:'Service ID'}]);
 
 // Providers
-if(id==='pr_list'){await i.deferUpdate();const r=await jnkieReq('GET','/providers');const list=(r.data?.providers||[]).map(p=>`\`${p.id}\` ${p.name}`).join('\n');return i.editReply({embeds:[new EmbedBuilder().setTitle('🏢').setColor(COLORS.info).setDescription(list||'None')],components:providerBtns()});}
-if(id==='pr_create'){return i.showModal(new ModalBuilder().setCustomId('m_pr_create').setTitle('Create').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('name').setLabel('Name').setStyle(TextInputStyle.Short).setRequired(true)),new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('min').setLabel('Minutes').setStyle(TextInputStyle.Short).setValue('1440').setRequired(false))));}
-if(id==='pr_delete'){return i.showModal(new ModalBuilder().setCustomId('m_pr_delete').setTitle('Delete').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('id').setLabel('ID').setStyle(TextInputStyle.Short).setRequired(true))));}
+if(id==='pr_list'){await i.deferUpdate();const r=await jnkieReq('GET','/providers');const list=(r.data?.providers||[]).map(p=>`\`${p.id}\` - ${p.name} ${p.is_active?'✅':'❌'}`).join('\n');return i.editReply({embeds:[new EmbedBuilder().setTitle('🏭 Providers').setColor(COLORS.info).setDescription(list||'None')],components:providerButtons()});}
+if(id==='pr_create')return showModal(i,'m_pr_create','➕ Create Provider',[{id:'name',label:'Provider Name'},{id:'validity',label:'Key Valid Minutes (empty=forever)',required:false}]);
+if(id==='pr_delete')return showModal(i,'m_pr_delete','🗑️ Delete Provider',[{id:'id',label:'Provider ID'}]);
 
 await i.deferUpdate();
 }
 
-// ========== MODALS ==========
+// ========== MODAL HELPER ==========
+function showModal(i,customId,title,fields){
+const modal=new ModalBuilder().setCustomId(customId).setTitle(title);
+fields.forEach(f=>{
+modal.addComponents(new ActionRowBuilder().addComponents(
+new TextInputBuilder().setCustomId(f.id).setLabel(f.label).setStyle(TextInputStyle.Short).setRequired(f.required!==false).setValue(f.value||'')
+));
+});
+return i.showModal(modal);
+}
+
+function showAdvancedKeyModal(i){
+return i.showModal(new ModalBuilder().setCustomId('m_k_advanced').setTitle('⚙️ Advanced Key Create')
+.addComponents(
+new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('key_name').setLabel('Key Name (optional)').setStyle(TextInputStyle.Short).setRequired(false)),
+new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hwid_limit').setLabel('HWID Limit (0=unlimited)').setStyle(TextInputStyle.Short).setValue('3').setRequired(false)),
+new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('validity').setLabel('Validity Minutes (empty=forever)').setStyle(TextInputStyle.Short).setRequired(false)),
+new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('discord_id').setLabel('Discord ID (optional)').setStyle(TextInputStyle.Short).setRequired(false)),
+new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('options').setLabel('Options: premium,onetime,nohwid,expiryfirst').setStyle(TextInputStyle.Short).setRequired(false))
+));
+}
+
+// ========== MODAL HANDLER ==========
 async function handleModal(i){
 const id=i.customId;
 const sid=safeInt(SERVICE_ID),pid=safeInt(PROVIDER_ID);
 
+// Keys
 if(id==='m_k_create'){
 await i.deferReply();
-const note=i.fields.getTextInputValue('note')||'Bot';
-const hwid=safeInt(i.fields.getTextInputValue('hwid'),3);
-log('KEY',`Create: service_id=${sid}, provider_id=${pid}`);
-const r=await jnkieReq('POST','/keys',{service_id:sid,provider_id:pid,note,max_hwids:hwid});
-if(!r.ok)return i.editReply(`❌\n\`\`\`json\n${JSON.stringify(r.data,null,2).substring(0,1500)}\n\`\`\``);
-return i.editReply({embeds:[new EmbedBuilder().setTitle('✅').setColor(COLORS.success).setDescription(`\`\`\`\n${r.data?.key?.key_value||r.data?.key_value}\n\`\`\``)]});
+const note=i.fields.getTextInputValue('note')||'Created via Bot';
+const r=await jnkieReq('POST','/keys',{service_id:sid,provider_id:pid,note,hwid_limit:3});
+if(!r.ok)return i.editReply(`❌ ${JSON.stringify(r.data)}`);
+const key=r.data?.key?.key_value||r.data?.key_value;
+return i.editReply({embeds:[new EmbedBuilder().setTitle('✅ Created').setColor(COLORS.success).setDescription(`\`\`\`${key}\`\`\``)]});
 }
 
 if(id==='m_k_batch'){
 await i.deferReply();
 const count=Math.min(50,safeInt(i.fields.getTextInputValue('count'),5));
-const hwid=safeInt(i.fields.getTextInputValue('hwid'),3);
-const r=await jnkieReq('POST','/keys/batch',{service_id:sid,provider_id:pid,count,note:'Batch',max_hwids:hwid});
-if(!r.ok)return i.editReply(`❌\n\`\`\`json\n${JSON.stringify(r.data,null,2).substring(0,1500)}\n\`\`\``);
+const r=await jnkieReq('POST','/keys/batch',{service_id:sid,provider_id:pid,count,note:'Batch',hwid_limit:3});
+if(!r.ok)return i.editReply(`❌ ${JSON.stringify(r.data)}`);
 const keys=r.data?.keys||[];
-const list=keys.map(k=>k.key_value||k).join('\n');
-return i.editReply({embeds:[new EmbedBuilder().setTitle(`✅ ${keys.length}`).setColor(COLORS.success)],files:[new AttachmentBuilder(Buffer.from(list,'utf8'),{name:'batch.txt'})]});
+const file=keys.map(k=>k.key_value).join('\n');
+return i.editReply({embeds:[new EmbedBuilder().setTitle('✅ Batch Created').setColor(COLORS.success).setDescription(`Created ${keys.length} keys`)],files:[new AttachmentBuilder(Buffer.from(file,'utf8'),{name:`batch_${Date.now()}.txt`})]});
 }
 
-if(id==='m_k_delete'){await i.deferReply();const r=await jnkieReq('DELETE',`/keys/${i.fields.getTextInputValue('id').trim()}`);return i.editReply(r.ok?'✅ Deleted':`❌ ${JSON.stringify(r.data||r.error)}`);}
-if(id==='m_k_reset'){await i.deferReply();const r=await jnkieReq('POST',`/keys/${i.fields.getTextInputValue('id').trim()}/reset-hwid`);return i.editReply(r.ok?'✅ Reset':`❌ ${JSON.stringify(r.data||r.error)}`);}
+if(id==='m_k_advanced'){
+await i.deferReply();
+const keyName=i.fields.getTextInputValue('key_name')||null;
+const hwidLimit=safeInt(i.fields.getTextInputValue('hwid_limit'),3);
+const validity=i.fields.getTextInputValue('validity');
+const discordId=i.fields.getTextInputValue('discord_id')||null;
+const options=i.fields.getTextInputValue('options')?.toLowerCase()||'';
 
-if(id==='m_s_create'){await i.deferReply();const r=await jnkieReq('POST','/services',{name:i.fields.getTextInputValue('name'),description:'Bot',is_premium:false,keyless_mode:false});return i.editReply(r.ok?`✅ ID: \`${r.data?.service?.id||r.data?.id}\``:`❌ ${JSON.stringify(r.data||r.error)}`);}
-if(id==='m_s_delete'){await i.deferReply();const r=await jnkieReq('DELETE',`/services/${i.fields.getTextInputValue('id').trim()}`);return i.editReply(r.ok?'✅':`❌ ${JSON.stringify(r.data||r.error)}`);}
+const body={service_id:sid,provider_id:pid,hwid_limit:hwidLimit||null,note:'Advanced'};
+if(keyName)body.key_name=keyName;
+if(validity)body.validity_minutes=safeInt(validity);
+if(discordId)body.discord_id=discordId;
+if(options.includes('premium'))body.is_premium=true;
+if(options.includes('onetime'))body.one_time_use=true;
+if(options.includes('nohwid'))body.no_hwid=true;
+if(options.includes('expiryfirst'))body.expiry_on_first_use=true;
 
-if(id==='m_pr_create'){await i.deferReply();const r=await jnkieReq('POST','/providers',{name:i.fields.getTextInputValue('name'),key_valid_minutes:safeInt(i.fields.getTextInputValue('min'),1440),is_active:true});return i.editReply(r.ok?`✅ ID: \`${r.data?.provider?.id||r.data?.id}\``:`❌ ${JSON.stringify(r.data||r.error)}`);}
-if(id==='m_pr_delete'){await i.deferReply();const r=await jnkieReq('DELETE',`/providers/${i.fields.getTextInputValue('id').trim()}`);return i.editReply(r.ok?'✅':`❌ ${JSON.stringify(r.data||r.error)}`);}
+const r=await jnkieReq('POST','/keys',body);
+if(!r.ok)return i.editReply(`❌ ${JSON.stringify(r.data)}`);
+return i.editReply(buildKeyDetailEmbed(r.data?.key||r.data));
 }
 
-// ========== PROMETHEUS ==========
-async function prometheusObf(script,preset){
-const ts=Date.now(),inp=path.join(PROMETHEUS_PATH,`i${ts}.lua`),out=path.join(PROMETHEUS_PATH,`o${ts}.lua`);
-try{fs.writeFileSync(inp,script.replace(/^\uFEFF/,'').trim(),'utf8');await execAsync(`cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset ${preset} "${inp}" --out "${out}"`,{timeout:120000});return fs.existsSync(out)?{success:true,code:fs.readFileSync(out,'utf8')}:{success:false,error:'No output'};}catch(e){return{success:false,error:e.message};}finally{[inp,out].forEach(f=>{try{fs.unlinkSync(f);}catch(e){}});}
+if(id==='m_k_search'){
+await i.deferReply();
+const value=i.fields.getTextInputValue('value');
+const r=await jnkieReq('GET',`/keys?service_id=${sid}&key_value=${encodeURIComponent(value)}`);
+const keys=r.data?.keys||[];
+if(!keys.length)return i.editReply({embeds:[new EmbedBuilder().setTitle('🔍 Not Found').setColor(COLORS.warning)]});
+return i.editReply(buildKeyDetailEmbed(keys[0]));
 }
 
-// ========== LUA FREE ==========
-async function luaFreeObf(script,cfg,retry=3){
-const clean=script.replace(/^\uFEFF/,'').trim();
-log('LUA',`Start: ${clean.length}B`);
-for(let i=1;i<=retry;i++){
-if(i>1)await sleep(2000);
-try{
-const s1=await httpPost('api.luaobfuscator.com','/v1/obfuscator/newscript',clean,{'Content-Type':'text/plain','apikey':LUAFREE_API_KEY},60000);
-if(!s1?.sessionId){log('LUA',`S1 fail: ${JSON.stringify(s1).substring(0,100)}`);continue;}
-await sleep(500);
-const s2=await httpPost('api.luaobfuscator.com','/v1/obfuscator/obfuscate',JSON.stringify(cfg),{'Content-Type':'application/json','apikey':LUAFREE_API_KEY,'sessionId':s1.sessionId},180000);
-if(!s2?.code){if((s2?.message||'').includes('Session'))continue;log('LUA',`S2 fail: ${JSON.stringify(s2).substring(0,100)}`);continue;}
-const ratio=(s2.code.length/clean.length)*100;
-log('LUA',`OK: ${s2.code.length}B (${ratio.toFixed(0)}%)`);
-if(!cfg.MinifiyAll&&s2.code.length<clean.length&&i<retry)continue;
-return{success:true,code:s2.code,warning:(!cfg.MinifiyAll&&ratio<150)?'LOW':null};
-}catch(e){log('LUA',`Err: ${e.message}`);}}
-return{success:false,error:'Failed after retries'};
+if(id==='m_k_detail'){
+await i.deferReply();
+const keyId=safeInt(i.fields.getTextInputValue('id'));
+const r=await jnkieReq('GET',`/keys/${keyId}`);
+if(!r.ok)return i.editReply('❌ Key not found');
+return i.editReply(buildKeyDetailEmbed(r.data?.key||r.data));
 }
 
-// ========== HTTP ==========
-function httpPost(host,path,body,headers,timeout=30000){
-return new Promise(resolve=>{
-const data=typeof body==='string'?body:JSON.stringify(body);
-const req=https.request({hostname:host,port:443,path,method:'POST',headers:{...headers,'Content-Length':Buffer.byteLength(data)}},res=>{let d='';res.on('data',c=>d+=c);res.on('end',()=>{try{resolve(JSON.parse(d));}catch(e){resolve({error:'Parse',raw:d.substring(0,200)});}});});
-req.on('error',e=>resolve({error:e.message}));req.setTimeout(timeout,()=>{req.destroy();resolve({error:'Timeout'});});req.write(data);req.end();
-});
+if(id==='m_k_delete'){
+await i.deferReply();
+const keyId=safeInt(i.fields.getTextInputValue('id'));
+const r=await jnkieReq('DELETE',`/keys/${keyId}`);
+return i.editReply(r.ok?'✅ Key deleted':`❌ ${JSON.stringify(r.data)}`);
 }
 
+if(id==='m_k_invalidate'){
+await i.deferReply();
+const keyId=safeInt(i.fields.getTextInputValue('id'));
+const r=await jnkieReq('PATCH',`/keys/${keyId}`,{is_invalidated:true});
+return i.editReply(r.ok?'🚫 Key invalidated':`❌ ${JSON.stringify(r.data)}`);
+}
+
+if(id==='m_k_revalidate'){
+await i.deferReply();
+const keyId=safeInt(i.fields.getTextInputValue('id'));
+const r=await jnkieReq('PATCH',`/keys/${keyId}`,{is_invalidated:false});
+return i.editReply(r.ok?'✅ Key revalidated':`❌ ${JSON.stringify(r.data)}`);
+}
+
+if(id==='m_k_resethwid'){
+await i.deferReply();
+const keyId=safeInt(i.fields.getTextInputValue('id'));
+const r=await jnkieReq('DELETE',`/keys/${keyId}/hwids`);
+return i.editReply(r.ok?'✅ All HWIDs removed':`❌ ${JSON.stringify(r.data)}`);
+}
+
+if(id==='m_k_removehwid'){
+await i.deferReply();
+const keyId=safeInt(i.fields.getTextInputValue('id'));
+const hwid=i.fields.getTextInputValue('hwid');
+const r=await jnkieReq('DELETE',`/keys/${keyId}/hwids/${encodeURIComponent(hwid)}`);
+return i.editReply(r.ok?'✅ HWID removed':`❌ ${JSON.stringify(r.data)}`);
+}
+
+// Services
+if(id==='m_s_create'){
+await i.deferReply();
+const name=i.fields.getTextInputValue('name');
+const desc=i.fields.getTextInputValue('desc')||'Created via Bot';
+const r=await jnkieReq('POST','/services',{name,description:desc});
+return i.editReply(r.ok?`✅ Service created (ID: ${r.data?.service?.id||r.data?.id})`:`❌ ${JSON.stringify(r.data)}`);
+}
+
+if(id==='m_s_delete'){
+await i.deferReply();
+const sId=safeInt(i.fields.getTextInputValue('id'));
+const r=await jnkieReq('DELETE',`/services/${sId}`);
+return i.editReply(r.ok?'✅ Service deleted':`❌ ${JSON.stringify(r.data)}`);
+}
+
+// Providers
+if(id==='m_pr_create'){
+await i.deferReply();
+const name=i.fields.getTextInputValue('name');
+const validity=i.fields.getTextInputValue('validity');
+const body={name,service_id:sid};
+if(validity)body.key_valid_minutes=safeInt(validity);
+const r=await jnkieReq('POST','/providers',body);
+return i.editReply(r.ok?`✅ Provider created (ID: ${r.data?.provider?.id||r.data?.id})`:`❌ ${JSON.stringify(r.data)}`);
+}
+
+if(id==='m_pr_delete'){
+await i.deferReply();
+const pId=safeInt(i.fields.getTextInputValue('id'));
+const r=await jnkieReq('DELETE',`/providers/${pId}`);
+return i.editReply(r.ok?'✅ Provider deleted':`❌ ${JSON.stringify(r.data)}`);
+}
+}
+
+// ========== API FUNCTIONS ==========
 function jnkieReq(method,endpoint,body=null){
 return new Promise(resolve=>{
 const data=body?JSON.stringify(body):'';
-log('JNKIE',`${method} ${endpoint} ${data.substring(0,100)}`);
-const req=https.request({hostname:'api.jnkie.com',port:443,path:`/api/v2${endpoint}`,method,headers:{'Authorization':`Bearer ${JNKIE_API_KEY}`,'Content-Type':'application/json','Content-Length':Buffer.byteLength(data)}},res=>{let d='';res.on('data',c=>d+=c);res.on('end',()=>{log('JNKIE',`${res.statusCode}: ${d.substring(0,100)}`);try{resolve({ok:res.statusCode>=200&&res.statusCode<300,status:res.statusCode,data:JSON.parse(d)});}catch(e){resolve({ok:false,error:'Parse',raw:d});}});});
-req.on('error',e=>resolve({ok:false,error:e.message}));req.setTimeout(15000,()=>{req.destroy();resolve({ok:false,error:'Timeout'});});if(body)req.write(data);req.end();
+const req=https.request({
+hostname:'api.jnkie.com',
+port:443,
+path:`/api/v2${endpoint}`,
+method,
+headers:{
+'Authorization':`Bearer ${JNKIE_API_KEY}`,
+'Content-Type':'application/json',
+'Content-Length':Buffer.byteLength(data)
+}
+},res=>{
+let d='';
+res.on('data',c=>d+=c);
+res.on('end',()=>{
+try{resolve({ok:res.statusCode<300,status:res.statusCode,data:JSON.parse(d)});}
+catch(e){resolve({ok:false,error:'Parse error',raw:d});}
+});
+});
+req.on('error',e=>resolve({ok:false,error:e.message}));
+req.setTimeout(15000,()=>{req.destroy();resolve({ok:false,error:'Timeout'});});
+if(body)req.write(data);
+req.end();
 });
 }
 
-// ========== UTILS ==========
-function downloadFile(url){return new Promise((r,j)=>{https.get(url,res=>{const d=[];res.on('data',c=>d.push(c));res.on('end',()=>r(Buffer.concat(d).toString('utf8')));}).on('error',j);});}
-function formatSize(b){return b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toFixed(1)+'MB';}
-function formatCode(c){return c.replace(/;(\S)/g,';\n$1').replace(/\bend\b/g,'\nend\n').replace(/\n{3,}/g,'\n\n').trim();}
+async function prometheusObf(script,preset){
+const ts=Date.now();
+const inp=path.join(PROMETHEUS_PATH,`i${ts}.lua`);
+const out=path.join(PROMETHEUS_PATH,`o${ts}.lua`);
+try{
+fs.writeFileSync(inp,script.replace(/^\uFEFF/,'').trim(),'utf8');
+await execAsync(`cd "${PROMETHEUS_PATH}" && lua5.1 cli.lua --preset ${preset} "${inp}" --out "${out}"`,{timeout:120000});
+if(!fs.existsSync(out))return{success:false,error:'No output file'};
+return{success:true,code:fs.readFileSync(out,'utf8')};
+}catch(e){return{success:false,error:e.message};}
+finally{[inp,out].forEach(f=>{try{fs.unlinkSync(f);}catch(e){}});}
+}
 
+function downloadFile(url){
+return new Promise((resolve,reject)=>{
+https.get(url,res=>{
+const chunks=[];
+res.on('data',c=>chunks.push(c));
+res.on('end',()=>resolve(Buffer.concat(chunks).toString('utf8')));
+}).on('error',reject);
+});
+}
+
+// ========== LOGIN ==========
 client.login(TOKEN);
